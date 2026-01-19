@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 30065b4bc67131b49bb00c6cb5f0e21b, type: 3}
+  m_Name: Level_24
+  m_EditorClassIdentifier: 
+  gridWidth: 6
+  gridHeight: 8
+  GridSeed: 460
+  SpecialPiecesAmount: 2
+  movesCount: 25
+  target1Piece: 0
+  target2Piece: 4
+  target1Count: 6
+  target2Count: 6
+  timeLimit: 120
+  isTimedLevel: 0
+  isMovesLevel: 0
+  blockedCells:
+  - x: 0
+    y: 1
+  - x: 4
+    y: 5
+  - x: 1
+    y: 7
+  - x: 3
+    y: 1
+  - x: 5
+    y: 3

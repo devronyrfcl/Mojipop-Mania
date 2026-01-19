@@ -1,0 +1,614 @@
+#region Handle Touch Input
+    public void HandleTouchInput()
+    {
+        if (Input.touchCount > 0)
+        {
+            Touch touch = Input.GetTouch(0);
+            switch (touch.phase)
+            {
+                case TouchPhase.Began:
+                    startTouchPosition = touch.position;
+                    break;
+                case TouchPhase.Moved:
+                    endTouchPosition = touch.position;
+                    DetectSwipe();
+                    break;
+                case TouchPhase.Ended:
+                    // Reset positions after the touch ends
+                    startTouchPosition = Vector2.zero;
+                    endTouchPosition = Vector2.zero;
+                    break;
+            }
+        }
+    }
+
+    // Method to detect swipe direction
+    void DetectSwipe()
+    {
+        Vector2 swipeDirection = endTouchPosition - startTouchPosition;
+        swipeAngle = Mathf.Atan2(swipeDirection.y, swipeDirection.x) * Mathf.Rad2Deg;
+        // Check if the swipe is significant enough to be considered a valid swipe
+        if (swipeDirection.magnitude > 50f) // Adjust the threshold as needed
+        {
+            if (Mathf.Abs(swipeAngle) < 45f)
+            {
+                // Swipe Right
+                Debug.Log("Swipe Right");
+                // Handle right swipe logic here
+            }
+            else if (Mathf.Abs(swipeAngle) > 135f)
+            {
+                // Swipe Left
+                Debug.Log("Swipe Left");
+                // Handle left swipe logic here
+            }
+            else if (swipeAngle > 45f && swipeAngle < 135f)
+            {
+                // Swipe Up
+                Debug.Log("Swipe Up");
+                // Handle up swipe logic here
+            }
+            else if (swipeAngle < -45f && swipeAngle > -135f)
+            {
+                // Swipe Down
+                Debug.Log("Swipe Down");
+                // Handle down swipe logic here
+            }
+        }
+    }
+    #endregion
+
+
+
+    // swich the pieces x, y positions based on mouse position and selection pieces. basically will drag and change the position of the pieces in the grid with nearby other pieces gameobject. use StartTouchPosition and endTouchPosition for current piece  and other pieces.
+
+
+     //when finalTouchPosition is on another piece then gameobject "otherPiece" will be set to that piece (sime way without using raycast)
+
+
+     /*if (finalTouchPosition != Vector2.zero)
+        {
+            RaycastHit2D hit = Physics2D.Raycast(finalTouchPosition, Vector2.zero);
+            if (hit.collider != null && hit.collider.gameObject != gameObject)
+            {
+                otherPiece = hit.collider.gameObject;
+                tempPosition = otherPiece.transform.position;
+                otherPiece.transform.position = transform.position;
+                transform.position = tempPosition;
+                finalTouchPosition = Vector2.zero; // Reset final touch position after swap
+            }
+     
+     
+     
+     //detects matches in the grid based on the all pieces position and using the refence of : public PieceType pieceType
+     
+     
+
+
+
+
+
+
+
+
+
+
+
+
+
+using UnityEngine;
+using System.Collections.Generic;
+
+public class MatchChecker : MonoBehaviour
+{
+    public GridManager gridManager;
+    public List<GameObject> matchedPieces = new List<GameObject>();
+
+    public void CheckForMatches()
+    {
+        matchedPieces.Clear();
+
+        // Horizontal check
+        for (int y = 0; y < gridManager.height; y++)
+        {
+            for (int x = 0; x < gridManager.width - 2; x++)
+            {
+                GameObject a = gridManager.grid[x, y];
+                GameObject b = gridManager.grid[x + 1, y];
+                GameObject c = gridManager.grid[x + 2, y];
+
+                if (IsMatch(a, b, c))
+                {
+                    AddToMatchList(a, b, c);
+                }
+            }
+        }
+
+        // Vertical check
+        for (int x = 0; x < gridManager.width; x++)
+        {
+            for (int y = 0; y < gridManager.height - 2; y++)
+            {
+                GameObject a = gridManager.grid[x, y];
+                GameObject b = gridManager.grid[x, y + 1];
+                GameObject c = gridManager.grid[x, y + 2];
+
+                if (IsMatch(a, b, c))
+                {
+                    AddToMatchList(a, b, c);
+                }
+            }
+        }
+    }
+
+    bool IsMatch(GameObject a, GameObject b, GameObject c)
+    {
+        if (a == null || b == null || c == null) return false;
+
+        Piece pa = a.GetComponent<Piece>();
+        Piece pb = b.GetComponent<Piece>();
+        Piece pc = c.GetComponent<Piece>();
+
+        return pa.type == pb.type && pb.type == pc.type;
+    }
+
+    void AddToMatchList(params GameObject[] pieces)
+    {
+        foreach (GameObject piece in pieces)
+        {
+            if (!matchedPieces.Contains(piece))
+                matchedPieces.Add(piece);
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+public void HorizontalMatch()
+    {
+        Debug.Log("Checking for horizontal matches...");
+        // Logic to check for horizontal matches in the grid
+        // This will involve checking each row for consecutive pieces of the same type
+        for (int y = 0; y < gridHeight; y++)
+        {
+            int matchCount = 1; // Counter for consecutive matches
+            for (int x = 1; x < gridWidth - 1; x++)
+            {
+                Piece current = grid[x, y].GetComponent<Piece>();
+                Piece next = grid[x + 1, y].GetComponent<Piece>();
+
+                if (current != null && next != null)
+                {
+                    matchCount++;
+                    if (x + 1 == gridWidth - 1 && matchCount >=3)
+                    {
+                        Debug.Log("Horizontal match found at row " + y + " with " + matchCount + " pieces.");
+                        //HandleMatch
+
+
+                    }
+                }
+                else
+                {
+                    if (matchCount >= 3)
+                    {
+                        Debug.Log("Horizontal match found at row " + y + " with " + matchCount + " pieces.");
+                        //HandleMatch
+                    }
+                    matchCount = 1; // Reset the counter if no match is found
+                }
+            }
+
+        }
+
+        
+    }
+
+
+    public void VerticalMatch()
+    {
+        Debug.Log("Checking for vertical matches...");
+        // Logic to check for vertical matches in the grid
+        // This will involve checking each column for consecutive pieces of the same type
+        for (int x = 0; x < gridWidth; x++)
+        {
+            int matchCount = 1; // Counter for consecutive matches
+            for (int y = 1; y < gridHeight - 1; y++)
+            {
+                Piece current = grid[x, y].GetComponent<Piece>();
+                Piece next = grid[x, y + 1].GetComponent<Piece>();
+                if (current != null && next != null)
+                {
+                    matchCount++;
+                    if (y + 1 == gridHeight - 1 && matchCount >=3)
+                    {
+                        Debug.Log("Vertical match found at column " + x + " with " + matchCount + " pieces.");
+                        //HandleMatch
+                    }
+                }
+                else
+                {
+                    if (matchCount >= 3)
+                    {
+                        Debug.Log("Vertical match found at column " + x + " with " + matchCount + " pieces.");
+                        //HandleMatch
+                    }
+                    matchCount = 1; // Reset the counter if no match is found
+                }
+            }
+        }
+
+    }
+
+
+
+
+
+
+    && downPiece != null && upPiece.pieceType == this.pieceType && downPiece.pieceType == this.pieceType)
+            {
+                    upPiece.isMatched = true;
+                    downPiece.isMatched = true;
+                    isMatched = true;
+
+                    Debug.Log($"Vertical match at ({X},{Y}) with {pieceType}");
+                }
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using DG.Tweening;
+
+public enum PieceType
+{
+    Blue, Green, Orange, Pink, Purple, Red, SkyBlue, Yellow
+}
+
+public class Piece : MonoBehaviour
+{
+    public int X, Y;
+    public Vector2 firstTouchPosition, finalTouchPosition;
+    public GameObject otherPiece;
+    public bool isMatched = false;
+    public PieceType pieceType;
+    public GridManager gridManager;
+
+    void Start()
+    {
+        gridManager = FindObjectOfType<GridManager>();
+    }
+
+    void Update()
+    {
+        SnapToGrid();
+        UpdateTargetPosition();
+    }
+
+    public void SetPosition(int x, int y)
+    {
+        X = x;
+        Y = y;
+        transform.position = new Vector2(x, y);
+    }
+
+    void SnapToGrid()
+    {
+        Vector2Int snapped = Vector2Int.RoundToInt(transform.position);
+        transform.position = new Vector2(snapped.x, snapped.y);
+    }
+
+    private void OnMouseDown()
+    {
+        firstTouchPosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+    }
+
+    private void OnMouseUp()
+    {
+        finalTouchPosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        CalculateAngle();
+    }
+
+    void CalculateAngle()
+    {
+        float swipeAngle = Mathf.Atan2(
+            finalTouchPosition.y - firstTouchPosition.y,
+            finalTouchPosition.x - firstTouchPosition.x) * 180 / Mathf.PI;
+
+        Invoke(nameof(FindMatches), 0.3f); // Give DOTween time to finish
+    }
+
+    void UpdateTargetPosition()
+    {
+        if (finalTouchPosition == Vector2.zero) return;
+
+        RaycastHit2D hit = Physics2D.Raycast(finalTouchPosition, Vector2.zero);
+        if (hit.collider != null && hit.collider.gameObject != gameObject)
+        {
+            otherPiece = hit.collider.gameObject;
+            Piece other = otherPiece.GetComponent<Piece>();
+
+            if (other == null) return;
+
+            // Only allow orthogonal swaps
+            Vector2Int diff = new Vector2Int(other.X - X, other.Y - Y);
+            if (Mathf.Abs(diff.x) + Mathf.Abs(diff.y) == 1)
+            {
+                Vector2 myTarget = other.transform.position;
+                Vector2 otherTarget = transform.position;
+
+                float swipeTime = 0.3f;
+
+                transform.DOMove(myTarget, swipeTime);
+                otherPiece.transform.DOMove(otherTarget, swipeTime);
+
+                // Swap positions in grid and data
+                gridManager.grid[X, Y] = otherPiece;
+                gridManager.grid[other.X, other.Y] = this.gameObject;
+
+                int tempX = X;
+                int tempY = Y;
+                X = other.X;
+                Y = other.Y;
+                other.X = tempX;
+                other.Y = tempY;
+            }
+
+            finalTouchPosition = Vector2.zero;
+        }
+    }
+
+    public void FindMatches()
+    {
+        if (gridManager == null || gridManager.grid == null) return;
+
+        // Horizontal check
+        if (X > 0 && X < gridManager.gridWidth - 1)
+        {
+            Piece left = gridManager.grid[X - 1, Y]?.GetComponent<Piece>();
+            Piece right = gridManager.grid[X + 1, Y]?.GetComponent<Piece>();
+
+            if (left && right && left.pieceType == pieceType && right.pieceType == pieceType)
+            {
+                isMatched = true;
+                left.isMatched = true;
+                right.isMatched = true;
+
+                MarkAsMatched(left);
+                MarkAsMatched(right);
+                MarkAsMatched(this);
+
+                Debug.Log($"Horizontal match at ({X},{Y})");
+            }
+        }
+
+        // Vertical check
+        if (Y > 0 && Y < gridManager.gridHeight - 1)
+        {
+            Piece down = gridManager.grid[X, Y - 1]?.GetComponent<Piece>();
+            Piece up = gridManager.grid[X, Y + 1]?.GetComponent<Piece>();
+
+            if (up && down && up.pieceType == pieceType && down.pieceType == pieceType)
+            {
+                isMatched = true;
+                up.isMatched = true;
+                down.isMatched = true;
+
+                MarkAsMatched(up);
+                MarkAsMatched(down);
+                MarkAsMatched(this);
+
+                Debug.Log($"Vertical match at ({X},{Y})");
+            }
+        }
+    }
+
+    void MarkAsMatched(Piece piece)
+    {
+        SpriteRenderer sr = piece.GetComponent<SpriteRenderer>();
+        if (sr != null) sr.color = Color.black;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+//create grid and place pieces position based on piecePrefabs attactched script Piece.SetPosition(x, y)
+    /*public void CreateGrid()
+    {
+        for (int x = 0; x < gridWidth; x++)
+        {
+            for (int y = 0; y < gridHeight; y++)
+            {
+                int randomIndex = Random.Range(0, piecePrefabs.Length);
+                GameObject piece = Instantiate(piecePrefabs[randomIndex], new Vector2(x, y), Quaternion.identity);
+                piece.GetComponent<Piece>().SetPosition(x, y); // Set the position of the piece in the grid
+                grid[x, y] = piece; // Store the piece in the grid array
+
+                piece.transform.SetParent(transform);
+                
+                piece.name = piece.GetComponent<Piece>().pieceType.ToString() + " (" + x + ", " + y + ")";
+            }
+        }
+
+        
+    }*/
+
+
+
+
+
+
+    void StickToTheGrid()
+    {
+        if (stickToGrid)
+        {
+            // Snap the piece to the grid position
+            Vector2 snappedPosition = new Vector2(Mathf.Round(transform.position.x), Mathf.Round(transform.position.y));
+            transform.position = snappedPosition;
+
+            /*Vector2Int snapped = Vector2Int.RoundToInt(transform.position);
+            transform.position = new Vector2(snapped.x, snapped.y); // Snap the piece to the grid position
+            */
+        }
+
+    }
+
+
+    //stickToGrid = false; // Disable sticking to grid for this operation
+
+    //stickToGrid will be false for a certain float time. after that it will be true both for this piece and the other piece
+    public void SetStickToGrid(float duration)
+    {
+        stickToGrid = false; // Disable sticking to grid for this operation
+        Invoke(nameof(EnableStickToGrid), duration); // Re-enable after the specified duration
+    }
+    private void EnableStickToGrid()
+    {
+        stickToGrid = false; // Re-enable sticking to grid
+        if (otherPiece != null)
+        {
+            Piece other = otherPiece.GetComponent<Piece>();
+            if (other != null)
+            {
+                other.stickToGrid = false; // Also enable for the other piece
+            }
+        }
+    }
+
+
+
+
+
+if(IsSpecialBombPiece)
+        {
+            //If Double click to circle collider as usual then call bomb(int x, int y)
+            if (Input.GetMouseButtonDown(0))
+            {
+                if (Input.GetMouseButtonDown(0))
+                {
+                    Bomb(X, Y);
+                }
+            }
+        }
+
+        if(IsSpecialRowPiece)
+        {
+            //If Double click to circle collider as usual then call ClearRow(int y)
+            if (Input.GetMouseButtonDown(0))
+            {
+                if (Input.GetMouseButtonDown(0))
+                {
+                    ClearRow(Y);
+                }
+            }
+        }
+
+        if(IsSpecialColoumnPiece)
+        {
+            //If Double click to circle collider as usual then call ClearColoumn(int x)
+            if (Input.GetMouseButtonDown(0))
+            {
+                if (Input.GetMouseButtonDown(0))
+                {
+                    ClearColoumn(X);
+                }
+            }
+        }
+
+
+
+
+
+
+
+        if (isSpinning)
+        {
+            currentTime += Time.deltaTime;
+
+            float progress = Mathf.Clamp01(currentTime / spinDuration);
+
+            // Ease out (slows down smoothly)
+            float easedProgress = 1 - Mathf.Pow(1 - progress, 3);
+
+            float currentAngle = easedProgress * totalAngle;
+            spinObject.transform.rotation = Quaternion.Euler(0, 0, -currentAngle);
+
+            if (progress >= 1f)
+            {
+                isSpinning = false;
+                onSpinComplete.Invoke(); // Trigger the event when spin is complet
+            }
+
+
+        }
+
+
+
+
+public void GetUserNameAndID()
+    {
+        var request = new GetAccountInfoRequest();
+        PlayFabClientAPI.GetAccountInfo(request, OnGetAccountInfoSuccess, OnError);
+    }
+    void OnGetAccountInfoSuccess(GetAccountInfoResult result)
+    {
+
+        //if name is not found, get name = "Guest"
+        if (string.IsNullOrEmpty(result.AccountInfo.Username))
+        {
+            playerName = "Guest";
+            if(loadScene != null)
+            {
+                loadScene.isFoundName = false; // Set the flag to false if name is not found
+            }
+
+        }
+        else
+        {
+            playerName = result.AccountInfo.Username;
+            loadScene.isFoundName = true; 
+        }
+        playerName = result.AccountInfo.Username;
+        Debug.Log("User Name: " + playerName);
+        Debug.Log("User ID: " + playerID);
+    }
