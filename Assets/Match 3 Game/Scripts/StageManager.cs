@@ -15,8 +15,6 @@ public class StageManager : MonoBehaviour
     [Header("Level Button References (Order matters)")]
     public LevelButtonManager[] levelButtons; // Assign in order in Inspector
 
-    [Header("JSON Save File")]
-    public string fileName = "playerdata.json";
 
     public TMP_Text TotalStar;
     public TMP_Text TotalXP;
@@ -54,11 +52,12 @@ public class StageManager : MonoBehaviour
 
     public GameObject NoInternetConnectionPanel; // Panel to show when no internet connection
 
+    public GameObject ExitPanel;
+
 
 
     private PlayerData playerData;
 
-    private string SavePath => Path.Combine(Application.persistentDataPath, fileName);
 
     private const string SelectedLevelIndexKey = "SelectedLevelIndex";
 
@@ -104,7 +103,11 @@ public class StageManager : MonoBehaviour
     {
         GetCurrentLevelInt();
 
-        
+        //if press back button on android then active exit panel
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            ExitPanel.SetActive(true);
+        }
     }
 
     void CheckForInternetConnection()
@@ -126,47 +129,41 @@ public class StageManager : MonoBehaviour
     }
     private void LoadPlayerData()
     {
+
+
         
-        
-        if (File.Exists(SavePath))
+
+        //load player data from playfab if online. no json file used here
+        if (PlayerDataManager.Instance.isOnline)
         {
-            //string json = File.ReadAllText(SavePath);
-
-            string encryptedJson = File.ReadAllText(SavePath);
-
-            // Decrypt before loading
-            string decryptedJson = XorEncryptDecrypt(encryptedJson);
-
-            playerData = JsonUtility.FromJson<PlayerData>(decryptedJson);
-            Debug.Log("StageManager: Player data loaded.");
+            Debug.Log("StageManager: Online mode - loading data from PlayFab.");
+            FetchPlayerDataFromPlayFab(); // Moved to Start() to avoid nested calls
         }
         else
         {
-            Debug.LogWarning("StageManager: Save file not found at " + SavePath);
-            playerData = new PlayerData(); // empty fallback
+            Debug.Log("StageManager: Offline mode - loading local JSON data.");
+            string savePath = Path.Combine(Application.persistentDataPath, "playerdata.json");
+            if (File.Exists(savePath))
+            {
+                string encryptedJson = File.ReadAllText(savePath);
+                // Decrypt before loading
+                string decryptedJson = XorEncryptDecrypt(encryptedJson);
+                playerData = JsonUtility.FromJson<PlayerData>(decryptedJson);
+                Debug.Log("Player data loaded (decrypted).");
+                GetCurrentLevelInt();
+            }
+            else
+            {
+                Debug.LogWarning("Save file not found, creating new player...");
+                PlayerDataManager.Instance.CreateNewPlayer("Rookie", System.Guid.NewGuid().ToString());
+                PlayerDataManager.Instance.SavePlayerData();
+                GetCurrentLevelInt();
+            }
         }
+
+
+
     }
-
-
-    /*public void LoadPlayerData()
-    {
-        if (File.Exists(savePath))
-        {
-            
-
-            playerData = JsonUtility.FromJson<PlayerData>(decryptedJson);
-            Debug.Log("Player data loaded (decrypted).");
-
-            GetCurrentLevel();
-        }
-        else
-        {
-            Debug.LogWarning("Save file not found, creating new player...");
-            CreateNewPlayer("Temp", Guid.NewGuid().ToString());
-            SavePlayerData();
-            GetCurrentLevel();
-        }
-    }*/
 
 
 
@@ -174,18 +171,6 @@ public class StageManager : MonoBehaviour
     {
 
         
-
-        /*//enable btn.isCurrentLevel=true if current level
-        for (int i = 0; i < levelButtons.Length; i++)
-        {
-            LevelButtonManager btn = levelButtons[i];
-            btn.isCurrentLevel = (i + 1 == currentLevel); // Levels start from 1
-            btn.SetInteractable(!btn.isCurrentLevel); // Disable interaction for current level button
-        }*/
-
-
-        //int currentLevelIndex = GetCurrentLevelIndex();
-
         for (int i = 0; i < levelButtons.Length; i++)
         {
             LevelButtonManager btn = levelButtons[i];
@@ -215,20 +200,7 @@ public class StageManager : MonoBehaviour
         SendDataToLeaderBoard();
     }
 
-    /*private int GetCurrentLevelIndex()
-    {
-        // Example: first unlocked level with <3 stars
-        for (int i = 0; i < levelButtons.Length; i++)
-        {
-            if (!levelButtons[i].isLocked)
-            {
-                return i;
-            }
-        }
-
-        // If all locked, fallback to first one
-        return 0;
-    }*/
+    
 
     IEnumerator EmojiLoading()
     {
@@ -271,48 +243,7 @@ public class StageManager : MonoBehaviour
         StartCoroutine(SelectLevelCoroutine(clickedButton));
     }
 
-    /*private IEnumerator SelectLevelCoroutine(LevelButtonManager clickedButton)
-    {
-        // Run Emoji animation first
-        yield return StartCoroutine(EmojiLoading());
-
-        int clickedIndex = -1;
-
-        // Find index of clicked button
-        for (int i = 0; i < levelButtons.Length; i++)
-        {
-            if (levelButtons[i] == clickedButton)
-            {
-                clickedIndex = i;
-                break;
-            }
-        }
-
-        if (clickedIndex == -1)
-            yield break; // safety check
-
-        // Check if the level is locked
-        LevelInfo levelInfo = playerData.Levels.Find(l => l.LevelID == clickedButton.levelId);
-        bool isLocked = levelInfo != null && levelInfo.LevelLocked == 1;
-
-        if (isLocked)
-        {
-            OnLockedLevelClicked(clickedButton.levelId); // call separate function
-            yield break;
-        }
-
-        // ✅ Level is unlocked → save and load scene
-        selectedLevelIndex = clickedIndex;
-        PlayerPrefs.SetInt(SelectedLevelIndexKey, clickedButton.levelId - 1);
-        PlayerPrefs.Save();
-
-        Debug.Log($"StageManager: Selected level saved as {clickedButton.levelId - 1}");
-
-        SceneManager.LoadScene("MainGame");
-
-        // Deduct 1 energy when level is selected
-    }*/
-
+    
 
     private IEnumerator SelectLevelCoroutine(LevelButtonManager clickedButton)
     {
@@ -392,35 +323,7 @@ public class StageManager : MonoBehaviour
         // You can also show a UI message or popup here
     }
 
-    /*public void ShowTotalXPandTotalStars()
-    {
-        if (playerData == null)
-        {
-            Debug.LogError("StageManager: No player data available.");
-            return;
-        }
-        totalXP = 0;
-        totalStars = 0;
-        foreach (LevelInfo level in playerData.Levels)
-        {
-            totalXP += level.XP;
-            totalStars += level.Stars;
-        }
-        TotalXP.text = $"{totalXP}";
-        TotalStar.text = $"{totalStars}";
-        Name.text = playerData.Name; // Display player name
-
-        //show current vibes
-        CurrentEnergyText.text = PlayerDataManager.Instance.GetEnergyCount().ToString();
-
-
-        //show ability counts
-        bombAbilityCount.text = playerData.PlayerBombAbilityCount.ToString();
-        colorBombAbilityCount.text = playerData.PlayerColorBombAbilityCount.ToString();
-        extraMoveAbilityCount.text = playerData.PlayerExtraMoveAbilityCount.ToString();
-        ShuffleAbilityCount.text = playerData.PlayerShuffleAbilityCount.ToString();
-    }*/
-
+    
     // This function remains the same - it just reads from playerData
     public void ShowTotalXPandTotalStars()
     {

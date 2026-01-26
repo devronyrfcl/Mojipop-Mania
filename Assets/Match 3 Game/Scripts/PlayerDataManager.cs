@@ -21,7 +21,6 @@ public class LevelListWrapper
 
 public class PlayerDataManager : MonoBehaviour
 {
-    private string savePath;
     public PlayerData playerData;
 
     public bool isLaunched = false; // Flag to check if the game has been launched
@@ -82,25 +81,11 @@ public class PlayerDataManager : MonoBehaviour
 
     void Start()
     {
-        //save path will be in android/data/com.companyname.match3game/files/playerdata.json
-        savePath = Path.Combine(Application.persistentDataPath, "playerdata.json");
-
-        //savePath = Path.Combine(Application.dataPath, "playerdata.json");
-
         LoginAsGuest();
 
-        if (File.Exists(savePath))
+        if(isOnline)
         {
-            LoadPlayerData();
-            
-            Debug.Log("Existing player data loaded.");
-        }
-        else
-        {
-            CreateNewPlayer("Temp", Guid.NewGuid().ToString());
-            SavePlayerData();
-            
-            Debug.Log("No save found. Default player created.");
+            //LoadPlayerData();
         }
 
         stageManager = FindObjectOfType<StageManager>();
@@ -120,7 +105,7 @@ public class PlayerDataManager : MonoBehaviour
 
     }
 
-    private string XorEncryptDecrypt(string data, string key = "Heil")
+    /*private string XorEncryptDecrypt(string data, string key = "Heil")
     {
         char[] result = new char[data.Length];
         for (int i = 0; i < data.Length; i++)
@@ -128,7 +113,7 @@ public class PlayerDataManager : MonoBehaviour
             result[i] = (char)(data[i] ^ key[i % key.Length]);
         }
         return new string(result);
-    }
+    }*/
 
 
     /// <summary>
@@ -144,27 +129,7 @@ public class PlayerDataManager : MonoBehaviour
         }
     }
 
-    /*public void CreateNewPlayer(string name, string playerId)
-    {
-        playerData = new PlayerData
-        {
-            Name = name,
-            PlayerID = playerId,
-            //TotalXP = 0,
-            PlayerBombAbilityCount = 20,
-            PlayerColorBombAbilityCount = 20,
-            PlayerExtraMoveAbilityCount = 20,
-            CurrentLevelId = 1, // 🔥 Default start at level 1
-            Levels = new List<LevelInfo>()
-            {
-                new LevelInfo { LevelID = 1, Stars = 0, XP = 0, LevelLocked = 0 }, // Start with level 1 unlocked
-                new LevelInfo { LevelID = 2, Stars = 0, XP = 0, LevelLocked = 1 }, // Level 2 locked by default
-                new LevelInfo { LevelID = 3, Stars = 0, XP = 0, LevelLocked = 1 } // Level 3 locked by default
-            }
-        };
-
-        SendPlayerDataToPlayFab();
-    }*/
+    
 
     public void CreateNewPlayer(string name, string playerId)
     {
@@ -229,13 +194,7 @@ public class PlayerDataManager : MonoBehaviour
 
     public void SavePlayerData()
     {
-        string json = JsonUtility.ToJson(playerData, true);
-
-        // Encrypt before saving
-        string encryptedJson = XorEncryptDecrypt(json);
-        File.WriteAllText(savePath, encryptedJson);
-
-        Debug.Log("Player data saved (encrypted) locally: " + savePath);
+        
 
         if (isOnline)
         {
@@ -266,26 +225,46 @@ public class PlayerDataManager : MonoBehaviour
 
     public void LoadPlayerData()
     {
-        if (File.Exists(savePath))
+        
+        //load data from PlayFab if online
+        if (isOnline)
         {
-            string encryptedJson = File.ReadAllText(savePath);
-
-            // Decrypt before loading
-            string decryptedJson = XorEncryptDecrypt(encryptedJson);
-
-            playerData = JsonUtility.FromJson<PlayerData>(decryptedJson);
-            Debug.Log("Player data loaded (decrypted).");
-
-            GetCurrentLevel();
-            //isLaunched = true;
+            PlayFabClientAPI.GetUserData(new GetUserDataRequest(), result =>
+            {
+                if (result.Data != null && result.Data.ContainsKey("Levels"))
+                {
+                    string levelsJson = result.Data["Levels"].Value;
+                    playerData = new PlayerData
+                    {
+                        Name = result.Data.ContainsKey("PlayerName") ? result.Data["PlayerName"].Value : "Temp",
+                        PlayerID = result.Data.ContainsKey("PlayerID") ? result.Data["PlayerID"].Value : Guid.NewGuid().ToString(),
+                        CurrentLevelId = result.Data.ContainsKey("CurrentLevelId") ? int.Parse(result.Data["CurrentLevelId"].Value) : 1,
+                        PlayerBombAbilityCount = result.Data.ContainsKey("PlayerBombAbilityCount") ? int.Parse(result.Data["PlayerBombAbilityCount"].Value) : 20,
+                        PlayerColorBombAbilityCount = result.Data.ContainsKey("PlayerColorBombAbilityCount") ? int.Parse(result.Data["PlayerColorBombAbilityCount"].Value) : 20,
+                        PlayerExtraMoveAbilityCount = result.Data.ContainsKey("PlayerExtraMoveAbilityCount") ? int.Parse(result.Data["PlayerExtraMoveAbilityCount"].Value) : 20,
+                        PlayerShuffleAbilityCount = result.Data.ContainsKey("PlayerShuffleAbilityCount") ? int.Parse(result.Data["PlayerShuffleAbilityCount"].Value) : 3,
+                        EnergyCount = result.Data.ContainsKey("PlayerEnergyCount") ? int.Parse(result.Data["PlayerEnergyCount"].Value) : 5,
+                        Levels = JsonUtility.FromJson<LevelListWrapper>(levelsJson).Levels
+                    };
+                    Debug.Log("Player data loaded from PlayFab.");
+                    GetCurrentLevel();
+                }
+                else
+                {
+                    Debug.LogWarning("No data found on PlayFab, creating new player...");
+                    CreateNewPlayer("Temp", Guid.NewGuid().ToString());
+                    SavePlayerData();
+                    GetCurrentLevel();
+                }
+            }, OnError);
         }
         else
         {
-            Debug.LogWarning("Save file not found, creating new player...");
-            CreateNewPlayer("Temp", Guid.NewGuid().ToString());
-            SavePlayerData();
-            GetCurrentLevel();
+            Debug.LogWarning("Offline mode: Cannot load data from PlayFab.");
         }
+
+
+
     }
 
 
@@ -482,7 +461,7 @@ public class PlayerDataManager : MonoBehaviour
         isOnline = true;
 
         // 🔥 When login succeeds, always sync local JSON data
-        LoadPlayerData();
+        //LoadPlayerData();
         SendPlayerDataToPlayFab();
         CheckAndSetPlayerName();
 
@@ -755,7 +734,7 @@ public class PlayerDataManager : MonoBehaviour
         Debug.Log("Online mode active. Syncing local data to PlayFab...");
 
         // 🔥 Sync latest local data to PlayFab
-        LoadPlayerData();  // Make sure JSON is loaded
+        //LoadPlayerData();  // Make sure JSON is loaded
         SendPlayerDataToPlayFab();
     }
 
@@ -830,7 +809,19 @@ public class PlayerDataManager : MonoBehaviour
 
     public void RemoveEnergy(int amount)
     {
-        playerData.EnergyCount -= amount;
+
+        //if energy is less than 0 set to 0. else remove amount
+        if (playerData.EnergyCount - amount < 0)
+        {
+            playerData.EnergyCount = 0;
+        }
+        else
+        {
+            playerData.EnergyCount -= amount;
+        }
+
+
+        //playerData.EnergyCount -= amount;
 
         // ✅ Update timestamp when energy is spent
         playerData.LastEnergyUpdateTime = GetCurrentUnixTime();
@@ -1022,31 +1013,42 @@ public class PlayerDataManager : MonoBehaviour
         );
     }
 
+    //create a function to get GetPlayerBombAbilityCount
+    public int GetPlayerBombAbilityCount()
+    {
+        return playerData.PlayerBombAbilityCount;
+    }
+    //create a function to get GetPlayerColorBombAbilityCount
+    public int GetPlayerColorBombAbilityCount()
+    {
+        return playerData.PlayerColorBombAbilityCount;
+    }
+    //create a function to get GetPlayerExtraMoveAbilityCount
+    public int GetPlayerExtraMoveAbilityCount()
+    {
+        return playerData.PlayerExtraMoveAbilityCount;
+    }
+    //create a function to get GetPlayerShuffleAbilityCount
+    public int GetPlayerShuffleAbilityCount()
+    {
+        return playerData.PlayerShuffleAbilityCount;
+    }
+
+
+
+
     /// <summary>
     /// Reconnects to PlayFab, syncs all data, and refreshes connection state
     /// Call this when internet connection is restored or when user manually retries
     /// </summary>
     public void ReconnectAndSyncPlayFab(System.Action onSuccess = null, System.Action onFailure = null)
     {
-        //save path will be in android/data/com.companyname.match3game/files/playerdata.json
-        savePath = Path.Combine(Application.persistentDataPath, "playerdata.json");
-
-        //savePath = Path.Combine(Application.dataPath, "playerdata.json");
 
         LoginAsGuest();
 
-        if (File.Exists(savePath))
+        if (isOnline)
         {
             LoadPlayerData();
-
-            Debug.Log("Existing player data loaded.");
-        }
-        else
-        {
-            CreateNewPlayer("Temp", Guid.NewGuid().ToString());
-            SavePlayerData();
-
-            Debug.Log("No save found. Default player created.");
         }
 
         stageManager = FindObjectOfType<StageManager>();

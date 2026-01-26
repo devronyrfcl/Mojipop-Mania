@@ -77,6 +77,10 @@ public class GridManager : MonoBehaviour
     public Button RestartButton;
     public Button NextLevelButton;
 
+    public GameObject WinMainMenuButton;
+    public GameObject LoseMainMenuButton;
+
+
 
     /*private int bombAmount;
     private int colorAmount;
@@ -114,6 +118,8 @@ public class GridManager : MonoBehaviour
     public GameObject NoInternetConnectionPanel;
     public GameObject NoInternetPanelInside;
 
+    public GameObject SettingsPanel;
+
 
 
 
@@ -142,9 +148,9 @@ public class GridManager : MonoBehaviour
     public GameObject verticalClearParticle;
 
     public bool isTimerRunning = false;
-    public string fileName = "playerdata.json";
+    //public string fileName = "playerdata.json";
 
-    private string SavePath; // = Path.Combine(Application.persistentDataPath, "playerdata.json");
+    //private string SavePath; // = Path.Combine(Application.persistentDataPath, "playerdata.json");
 
 
 
@@ -155,7 +161,7 @@ public class GridManager : MonoBehaviour
         Application.targetFrameRate = 60;
 
         grid = new GameObject[levelData.gridWidth, levelData.gridHeight];
-        SavePath = Path.Combine(Application.persistentDataPath, "playerdata.json");
+        //SavePath = Path.Combine(Application.persistentDataPath, "playerdata.json");
 
         LoadLevel();
 
@@ -230,6 +236,8 @@ public class GridManager : MonoBehaviour
 
         NextLevelButton.gameObject.SetActive(false); // Hide Next Level button initially
         RestartButton.gameObject.SetActive(false);
+        WinMainMenuButton.SetActive(false);
+        LoseMainMenuButton.SetActive(false);
 
         // Initialize No Internet Connection Panel as inactive & inside panel size 0
         NoInternetConnectionPanel.SetActive(false);
@@ -289,6 +297,14 @@ public class GridManager : MonoBehaviour
             OnTimeUp();
         }
 
+
+        //if press back button on android, then exit to main menu
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            SettingsPanel.SetActive(true);
+        }
+
+
         //GameOverLogic();
 
 
@@ -318,6 +334,8 @@ public class GridManager : MonoBehaviour
             }
         }*/
 
+
+
     }
 
 
@@ -346,6 +364,29 @@ public class GridManager : MonoBehaviour
 
         // Reload the current scene to load the new level
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
+    //back to main menu with same logic as above
+    public void BackToMainMenuFromNextLevel()
+    {
+        // Unlock the next level
+        PlayerDataManager.Instance.SetAllData(currentLevelIndex + 2, 0, 0, 0);
+        // Set the current level to the next level
+        //PlayerDataManager.Instance.SetCurrentLevel(currentLevelIndex + 2);
+        // Get the previous current level from PlayerData
+        PlayerData playerData = PlayerDataManager.Instance.playerData;
+        int previousCurrentLevel = playerData.CurrentLevelId;
+        // Only update current level if the new level is higher
+        if (currentLevelIndex + 2 >= previousCurrentLevel)
+        {
+            PlayerDataManager.Instance.SetCurrentLevel(currentLevelIndex + 2);
+        }
+        // Update the selected level index in PlayerPrefs
+        int nextLevelIndex = currentLevelIndex + 1;
+        PlayerPrefs.SetInt(SelectedLevelIndexKey, nextLevelIndex);
+        PlayerPrefs.Save(); // Save PlayerPrefs
+        // Load main menu scene
+        SceneManager.LoadScene("MainMenu");
     }
 
     public void RestartCurrentLevel()
@@ -467,7 +508,7 @@ public class GridManager : MonoBehaviour
         //savePath = 
 
         // Load player abilities from the JSON file
-        if (File.Exists(SavePath))
+        /*if (File.Exists(SavePath))
         {
             // Read encrypted JSON
             string encryptedJson = File.ReadAllText(SavePath);
@@ -489,7 +530,15 @@ public class GridManager : MonoBehaviour
         else
         {
             Debug.LogWarning("Save file not found. Using default ability values.");
-        }
+        }*/
+        //load from PlayerDataManager
+        Ability_bombCurrentAmount = PlayerDataManager.Instance.GetPlayerBombAbilityCount();
+        Ability_colorBombCurrentAmount = PlayerDataManager.Instance.GetPlayerColorBombAbilityCount();
+        Ability_extraMovesCurrentAmount = PlayerDataManager.Instance.GetPlayerExtraMoveAbilityCount();
+        Ability_shuffleCurrentAmount = PlayerDataManager.Instance.GetPlayerShuffleAbilityCount();
+        UpdateUI();
+
+
     }
 
 
@@ -507,12 +556,24 @@ public class GridManager : MonoBehaviour
 
     void GameOverHelper()
     {
+        
+
         StartCoroutine(GameOver());
     }
 
 
     IEnumerator GameOver()
     {
+
+
+        //if isGameOver is already true, then skip
+        if (!isGameOver)
+        {
+            yield break;
+        }
+
+
+
         //wait for 1 second
         yield return new WaitForSeconds(1f);
 
@@ -523,6 +584,8 @@ public class GridManager : MonoBehaviour
             Shine2.SetActive(false);
             AudioManager.Instance.PlaySFX("GameWin");
             NextLevelButton.gameObject.SetActive(true);
+            WinMainMenuButton.SetActive(true);
+            isGameOver = true;
         }
         else
         {
@@ -532,6 +595,8 @@ public class GridManager : MonoBehaviour
             AudioManager.Instance.PlaySFX("GameLose");
             PlayerDataManager.Instance.RemoveEnergy(1);
             RestartButton.gameObject.SetActive(true);
+            LoseMainMenuButton.SetActive(true);
+            isGameOver = true;
         }
 
         //gameOverText will be = level + currentLevelIndex + 1
@@ -708,6 +773,11 @@ public class GridManager : MonoBehaviour
 
         PlayerDataManager.Instance.GetCurrentLevel(); // Initialize current level after creating new player
 
+        //deduct 1 energy on exit to main menu
+        PlayerDataManager.Instance.RemoveEnergy(1);
+        //save player data
+        PlayerDataManager.Instance.SavePlayerData();
+
     }
 
 
@@ -739,7 +809,7 @@ public class GridManager : MonoBehaviour
         StartCoroutine(EmojiLoading_2());
         StartCoroutine(ExitScene());
         //vibe or energy will lose 1 on exit to main menu
-        PlayerDataManager.Instance.RemoveEnergy(1);
+        //PlayerDataManager.Instance.RemoveEnergy(1);
 
     }
 
