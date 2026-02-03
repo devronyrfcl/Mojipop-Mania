@@ -166,7 +166,7 @@ public class GridManager : MonoBehaviour
         LoadLevel();
 
         //AudioManager.Instance.PlayMusic("MenuBG");
-
+        GameOverPanel.transform.localScale = Vector3.zero; // Start from scale 0
 
         SpawnGridBackgroundBlock(); // Call the method to spawn background blocks
         //CreateGrid(); // Call the method to create the grid and place pieces
@@ -611,7 +611,7 @@ public class GridManager : MonoBehaviour
         canControl = false; // Disable player controls
         //game over panel will be shown using do tweening
         GameOverPanel.SetActive(true);
-        GameOverPanel.transform.localScale = Vector3.zero; // Start from scale 0
+        
         GameOverPanel.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.OutBack); // Scale to normal size
         // Optionally, you can also reset the game state or show options to restart or exit
         // Reset the grid and pieces
