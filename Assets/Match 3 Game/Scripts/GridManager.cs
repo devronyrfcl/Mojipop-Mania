@@ -119,6 +119,12 @@ public class GridManager : MonoBehaviour
     public GameObject NoInternetPanelInside;
 
     public GameObject SettingsPanel;
+    [Header("Warning Panel Dynamic Icons")]
+    public Image warningPanelIcon; // The UI Image inside the popup that needs to change
+    public Sprite bombSprite;
+    public Sprite clownSprite;
+    public Sprite movesSprite;
+    public Sprite shuffleSprite;
 
 
 
@@ -1142,57 +1148,61 @@ public class GridManager : MonoBehaviour
 
     public void OnBombButtonClick()
     {
-        isPlacingBomb = true;
+        // Check if player has enough bombs before letting them use one
+        if (Ability_bombCurrentAmount > 0)
+        {
+            isPlacingBomb = true;
+        }
+        else
+        {
+            // If 0, show the warning panel with the Bomb image!
+            ItemWarningPanel(bombSprite);
+        }
     }
 
     public void OnColorButtonClick()
     {
-        isPlacingColor = true;
+        // Check if player has enough clowns before letting them use one
+        if (Ability_colorBombCurrentAmount > 0)
+        {
+            isPlacingColor = true;
+        }
+        else
+        {
+            // If 0, show the warning panel with the Clown image!
+            ItemWarningPanel(clownSprite);
+        }
     }
 
-    //OnMoveButtonClick function call moveimage will spawn on spawn image and then go to target image using dotween
     public void OnMoveButtonClick()
     {
-        // Instantiate moveImage at imageSpawm position
-        //GameObject moveImg = Instantiate(moveImage, imageSpawm.position, Quaternion.identity, transform);
-        //spawn it as child of canvas
-        /*GameObject moveImg = Instantiate(moveImage, imageSpawm.position, Quaternion.identity, mainCanvas.transform);
-        moveImg.transform.localScale = Vector3.zero; // Start from scale 0
-        moveImg.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack); // Scale to normal size
-        // Move to imageTarget position
-        moveImg.transform.DOMove(imageTarget.position, 0.5f).SetEase(Ease.InOutQuad).OnComplete(() =>
+        // Check if player has enough extra moves before starting the animation
+        if (Ability_extraMovesCurrentAmount > 0)
         {
-            
-            Destroy(moveImg); // Destroy after reaching target
-        });*/
-
-        //increase currentMoves int by 5
-
-        //spawn 5 move images that move to target image using dotween
-        for (int i = 0; i < 5; i++)
-        {
-            GameObject moveImg = Instantiate(moveImage, imageSpawm.position, Quaternion.identity, mainCanvas.transform);
-            moveImg.transform.localScale = Vector3.zero; // Start from scale 0
-            moveImg.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack); // Scale to normal size
-            // Move to imageTarget position
-            moveImg.transform.DOMove(imageTarget.position, 0.5f).SetEase(Ease.InOutQuad).SetDelay(i * 0.1f).OnComplete(() =>
+            for (int i = 0; i < 5; i++)
             {
-                currentMoves += 1;
-                UpdateUI();
-                //play Pop_5 sound
-                AudioManager.Instance.PlaySFX("Pop_5");
-                Destroy(moveImg); // Destroy after reaching target
+                GameObject moveImg = Instantiate(moveImage, imageSpawm.position, Quaternion.identity, mainCanvas.transform);
+                moveImg.transform.localScale = Vector3.zero; // Start from scale 0
+                moveImg.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack); // Scale to normal size
+                
+                // Move to imageTarget position
+                moveImg.transform.DOMove(imageTarget.position, 0.5f).SetEase(Ease.InOutQuad).SetDelay(i * 0.1f).OnComplete(() =>
+                {
+                    currentMoves += 1;
+                    UpdateUI();
+                    AudioManager.Instance.PlaySFX("Pop_5");
+                    Destroy(moveImg); // Destroy after reaching target
+                });
+            }
 
-            });
-
+            // Deduct extra moves ability count by 1
+            DeductAbility_ExtraMoves(1);
         }
-
-        //Diduct extra moves ability count by 1
-        DeductAbility_ExtraMoves(1);
-
-
-
-
+        else
+        {
+            // If 0, show the warning panel with the Moves image!
+            ItemWarningPanel(movesSprite);
+        }
     }
 
 
@@ -1235,7 +1245,7 @@ public class GridManager : MonoBehaviour
         }
         else
         {
-            ItemWarningPanel();
+            ItemWarningPanel(shuffleSprite); // 🔥 Send the Shuffle icon
             return; // Exit if no reshuffle ability left
         }
         
@@ -1408,7 +1418,7 @@ public class GridManager : MonoBehaviour
         if (Ability_bombCurrentAmount < 0)
         {
             Ability_bombCurrentAmount = 0;
-            ItemWarningPanel();
+            ItemWarningPanel(bombSprite); // 🔥 Send the Bomb icon
         }
         UpdateUI();
     }
@@ -1430,7 +1440,7 @@ public class GridManager : MonoBehaviour
         if (Ability_colorBombCurrentAmount < 0)
         {
             Ability_colorBombCurrentAmount = 0;
-            ItemWarningPanel();
+            ItemWarningPanel(clownSprite); // 🔥 Send the Clown icon
         }
         UpdateUI();
     }
@@ -1452,7 +1462,7 @@ public class GridManager : MonoBehaviour
         if (Ability_extraMovesCurrentAmount < 0)
         {
             Ability_extraMovesCurrentAmount = 0;
-            ItemWarningPanel();
+            ItemWarningPanel(movesSprite); // 🔥 Send the Moves icon
         }
         UpdateUI();
     }
@@ -1464,18 +1474,22 @@ public class GridManager : MonoBehaviour
         if (Ability_shuffleCurrentAmount < 0)
         {
             Ability_shuffleCurrentAmount = 0;
-            ItemWarningPanel();
+            ItemWarningPanel(shuffleSprite); // 🔥 Send the Shuffle icon
         }
         UpdateUI();
     }
 
 
-    public void ItemWarningPanel()
+    public void ItemWarningPanel(Sprite iconToShow)
     {
+        // Change the icon before showing the panel
+        if (warningPanelIcon != null)
+        {
+            warningPanelIcon.sprite = iconToShow;
+        }
+        
         // Show the item warning panel
         itemWarningPanel.SetActive(true);
-        /*itemWarningPanel.transform.localScale = Vector3.zero; // Start from scale 0
-        itemWarningPanel.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.OutBack); // Scale to normal size*/
     }
 
 
