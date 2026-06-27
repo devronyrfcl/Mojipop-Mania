@@ -18,8 +18,6 @@ public class VolumeSettings : MonoBehaviour
 
     private void Start()
     {
-
-
         if (PlayerPrefs.HasKey(MusicVolumeKey))
         {
             LoadVolume();
@@ -28,77 +26,90 @@ public class VolumeSettings : MonoBehaviour
         {
             SetDefaultVolumes();
         }
-
+        
+        // Ensure UI matches the loaded data instantly
         ButttonsConditions();
-
-
     }
-
+    
     public void SetMusicVolume()
     {
         float volume = musicSlider.value;
+        
+        // 🔥 FIX: Clamp the minimum value so it never hits 0 and creates -Infinity
+        if (volume <= 0.001f) volume = 0.001f;
+        
         audioMixer.SetFloat("music", Mathf.Log10(volume) * 20);
         PlayerPrefs.SetFloat(MusicVolumeKey, volume);
+        
         ButttonsConditions();
     }
 
     public void SetsfxVolume()
     {
         float volume = sfxSlider.value;
+        
+        // 🔥 FIX: Clamp the minimum value
+        if (volume <= 0.001f) volume = 0.001f;
+        
         audioMixer.SetFloat("sfx", Mathf.Log10(volume) * 20);
         PlayerPrefs.SetFloat(SfxVolumeKey, volume);
+        
         ButttonsConditions();
     }
 
     private void LoadVolume()
     {
         musicSlider.value = PlayerPrefs.GetFloat(MusicVolumeKey);
-        SetMusicVolume();
         sfxSlider.value = PlayerPrefs.GetFloat(SfxVolumeKey);
+        
+        SetMusicVolume();
         SetsfxVolume();
     }
 
     private void SetDefaultVolumes()
     {
-        // Set default volume values or any other initialization logic here
+        // 🔥 FIX: Explicitly set the sliders to max before saving defaults
+        musicSlider.value = 1f;
+        sfxSlider.value = 1f;
+        
         SetMusicVolume();
         SetsfxVolume();
     }
 
-    public void OnClickMusicOff()
+    // --- BUTTON TOGGLES ---
+
+    public void OnClickMusicOff() // The "Unmute" Button
     {
-        MusicOffButton.SetActive(false);
-        MusicOnButton.SetActive(true);
         musicSlider.value = 1f;
         SetMusicVolume();
     }
-    public void OnClickMusicOn()
+    
+    public void OnClickMusicOn() // The "Mute" Button
     {
-        MusicOnButton.SetActive(false);
-        MusicOffButton.SetActive(true);
-        musicSlider.value = 0f;
+        // 🔥 FIX: Use 0.001f instead of 0f to prevent the AudioMixer crash
+        musicSlider.value = 0.001f;
         SetMusicVolume();
     }
-    public void OnClickSFXOff()
+    
+    public void OnClickSFXOff() // The "Unmute" Button
     {
-        SFXOffButton.SetActive(false);
-        SFXOnButton.SetActive(true);
         sfxSlider.value = 1f;
         SetsfxVolume();
     }
 
-    public void OnClickSFXOn()
+    public void OnClickSFXOn() // The "Mute" Button
     {
-        SFXOnButton.SetActive(false);
-        SFXOffButton.SetActive(true);
-        sfxSlider.value = 0f;
+        // 🔥 FIX: Use 0.001f instead of 0f
+        sfxSlider.value = 0.001f;
         SetsfxVolume();
-
     }
+
+    // --- UI UPDATER ---
 
     void ButttonsConditions()
     {
-        if (sfxSlider.value == 0.001f)
+        // 🔥 FIX: Use <= instead of == for floats. Floating point math is rarely exact!
+        if (sfxSlider.value <= 0.001f)
         {
             SFXOnButton.SetActive(false);
             SFXOffButton.SetActive(true);
@@ -109,7 +120,7 @@ public class VolumeSettings : MonoBehaviour
             SFXOnButton.SetActive(true);
         }
 
-        if (musicSlider.value == 0.001f)
+        if (musicSlider.value <= 0.001f)
         {
             MusicOnButton.SetActive(false);
             MusicOffButton.SetActive(true);
@@ -120,5 +131,4 @@ public class VolumeSettings : MonoBehaviour
             MusicOnButton.SetActive(true);
         }
     }
-
 }

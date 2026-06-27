@@ -137,9 +137,9 @@ public class PlayerDataManager : MonoBehaviour
         {
             Name = name,
             PlayerID = playerId,
-            PlayerBombAbilityCount = 20,
-            PlayerColorBombAbilityCount = 20,
-            PlayerExtraMoveAbilityCount = 20,
+            PlayerBombAbilityCount = 3,
+            PlayerColorBombAbilityCount = 3,
+            PlayerExtraMoveAbilityCount = 3,
             PlayerShuffleAbilityCount = 3,
             CurrentLevelId = 1,
             EnergyCount = 5,
