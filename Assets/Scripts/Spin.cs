@@ -292,7 +292,7 @@ public class Spin : MonoBehaviour
                     finalAngle = spinObject.transform.eulerAngles.z;
 
                     HandleResult(finalAngle);
-                    // checkSpinCountForAds();
+                    checkSpinCountForAds();
 
                     onSpinComplete.Invoke();
                 });
@@ -342,8 +342,6 @@ public class Spin : MonoBehaviour
 
     #endregion
 
-
-
     #region "Spin Results"
 
     private void HandleResult(float angle)
@@ -369,7 +367,6 @@ public class Spin : MonoBehaviour
         colorBombImage.SetActive(true);
         colorBombText.text = "1";
         PlayerDataManager.Instance.AddColorBombAbility(1);
-        FindObjectOfType<StageManager>()?.SyncLocalBooster("ColorBomb", 1); // 🔥 Instant Sync
     }
 
     void Result_2()
@@ -378,7 +375,6 @@ public class Spin : MonoBehaviour
         extraMoveImage.SetActive(true);
         extraMoveText.text = "1";
         PlayerDataManager.Instance.AddExtraMoveAbility(1);
-        FindObjectOfType<StageManager>()?.SyncLocalBooster("Moves", 1); // 🔥 Instant Sync
     }
 
     void Result_3()
@@ -387,16 +383,21 @@ public class Spin : MonoBehaviour
         extraMoveImage.SetActive(true);
         extraMoveText.text = "2";
         PlayerDataManager.Instance.AddExtraMoveAbility(2);
-        FindObjectOfType<StageManager>()?.SyncLocalBooster("Moves", 2); // 🔥 Instant Sync
     }
 
     void Result_4()
     {
+        /*Debug.Log("Won Bomb and Color Bomb");
+        bombImage.SetActive(true);
+        bombText.text = "2";
+        colorBombImage.SetActive(true);
+        colorBombText.text = "2";
+        PlayerDataManager.Instance.AddBombAbility(2);
+        PlayerDataManager.Instance.AddColorBombAbility(2);*/
         Debug.Log("Won Bomb x1");
         bombImage.SetActive(true);
         bombText.text = "1";
         PlayerDataManager.Instance.AddBombAbility(1);
-        FindObjectOfType<StageManager>()?.SyncLocalBooster("Bomb", 1); // 🔥 Instant Sync
     }
 
     void Result_5()
@@ -405,16 +406,18 @@ public class Spin : MonoBehaviour
         colorBombImage.SetActive(true);
         colorBombText.text = "1";
         PlayerDataManager.Instance.AddColorBombAbility(1);
-        FindObjectOfType<StageManager>()?.SyncLocalBooster("ColorBomb", 1); // 🔥 Instant Sync
     }
 
     void Result_6()
     {
+        /*Debug.Log("Won Color Bomb x1");
+        colorBombImage.SetActive(true);
+        colorBombText.text = "1";
+        PlayerDataManager.Instance.AddColorBombAbility(1);*/
         Debug.Log("Won Vibe x1");
         vibeImage.SetActive(true);
         vibeText.text = "1";
         PlayerDataManager.Instance.AddEnergy(1);
-        FindObjectOfType<StageManager>()?.ShowTotalXPandTotalStars(); // Energy syncs automatically here!
     }
 
     void Result_7()
@@ -423,16 +426,19 @@ public class Spin : MonoBehaviour
         extraMoveImage.SetActive(true);
         extraMoveText.text = "1";
         PlayerDataManager.Instance.AddExtraMoveAbility(1);
-        FindObjectOfType<StageManager>()?.SyncLocalBooster("Moves", 1); // 🔥 Instant Sync
     }
 
     void Result_8()
     {
+        /*Debug.Log("Won Bomb x2!");
+        bombImage.SetActive(true);
+        bombText.text = "2";
+        PlayerDataManager.Instance.AddBombAbility(2);*/
         Debug.Log("Won Shuffle x1");
         ShuffleImage.SetActive(true);
         ShuffleText.text = "1";
         PlayerDataManager.Instance.AddShuffleAbility(1);
-        FindObjectOfType<StageManager>()?.SyncLocalBooster("Shuffle", 1); // 🔥 Instant Sync
+
     }
 
     void ResetRewardUI()
@@ -449,16 +455,10 @@ public class Spin : MonoBehaviour
         bombImage.SetActive(false);
         colorBombImage.SetActive(false);
         extraMoveImage.SetActive(false);
-        if (vibeImage != null) vibeImage.SetActive(false); 
-        if (ShuffleImage != null) ShuffleImage.SetActive(false); 
-
-        checkSpinCountForAds(); 
-
+        spinNowBtn.SetActive(true);
         PlayerDataManager.Instance.SavePlayerData();
         SaveSpinCount();
-        
-        // Note: I removed the old RefreshLocalUI() call from here because the new instant sync handles it perfectly!
     }
 
-#endregion
+    #endregion
 }
