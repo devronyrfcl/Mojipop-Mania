@@ -28,7 +28,7 @@ public class GridManager : MonoBehaviour
     public LevelData levelData; // Reference to the LevelData ScriptableObject
 
     public LevelData[] levelDatas; // Array of LevelData ScriptableObjects for different levels
-
+    public string missingBoosterType = ""; // Remembers what we need to reward
 
     public int currentLevelIndex = 0;
     public int levelIndexFromJson;
@@ -434,6 +434,23 @@ public class GridManager : MonoBehaviour
         //wait for 1 sec
         yield return new WaitForSeconds(0.2f);
         isGameOver = false;
+    }
+    // 🔥 THE FIX: Grabs the newest items from the save data and redraws the UI
+    // 🔥 THE FIX: Grabs the newest items from the save data and redraws the UI after an Ad
+    public void RefreshAbilities()
+    {
+        Ability_bombCurrentAmount = PlayerDataManager.Instance.GetPlayerBombAbilityCount();
+        Ability_colorBombCurrentAmount = PlayerDataManager.Instance.GetPlayerColorBombAbilityCount();
+        Ability_extraMovesCurrentAmount = PlayerDataManager.Instance.GetPlayerExtraMoveAbilityCount();
+        Ability_shuffleCurrentAmount = PlayerDataManager.Instance.GetPlayerShuffleAbilityCount();
+        
+        // Automatically hide the warning panel since they just got the item!
+        if (itemWarningPanel != null) 
+        {
+            itemWarningPanel.SetActive(false);
+        }
+
+        UpdateUI();
     }
 
 
@@ -1148,60 +1165,54 @@ public class GridManager : MonoBehaviour
 
     public void OnBombButtonClick()
     {
-        // Check if player has enough bombs before letting them use one
         if (Ability_bombCurrentAmount > 0)
         {
             isPlacingBomb = true;
         }
         else
         {
-            // If 0, show the warning panel with the Bomb image!
-            ItemWarningPanel(bombSprite);
+            // 🔥 FIXED: Now passes 2 arguments!
+            ItemWarningPanel(bombSprite, "Bomb");
         }
     }
 
     public void OnColorButtonClick()
     {
-        // Check if player has enough clowns before letting them use one
         if (Ability_colorBombCurrentAmount > 0)
         {
             isPlacingColor = true;
         }
         else
         {
-            // If 0, show the warning panel with the Clown image!
-            ItemWarningPanel(clownSprite);
+            // 🔥 FIXED: Now passes 2 arguments!
+            ItemWarningPanel(clownSprite, "Clown");
         }
     }
 
     public void OnMoveButtonClick()
     {
-        // Check if player has enough extra moves before starting the animation
         if (Ability_extraMovesCurrentAmount > 0)
         {
             for (int i = 0; i < 5; i++)
             {
                 GameObject moveImg = Instantiate(moveImage, imageSpawm.position, Quaternion.identity, mainCanvas.transform);
-                moveImg.transform.localScale = Vector3.zero; // Start from scale 0
-                moveImg.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack); // Scale to normal size
+                moveImg.transform.localScale = Vector3.zero; 
+                moveImg.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack); 
                 
-                // Move to imageTarget position
                 moveImg.transform.DOMove(imageTarget.position, 0.5f).SetEase(Ease.InOutQuad).SetDelay(i * 0.1f).OnComplete(() =>
                 {
                     currentMoves += 1;
                     UpdateUI();
                     AudioManager.Instance.PlaySFX("Pop_5");
-                    Destroy(moveImg); // Destroy after reaching target
+                    Destroy(moveImg); 
                 });
             }
-
-            // Deduct extra moves ability count by 1
             DeductAbility_ExtraMoves(1);
         }
         else
         {
-            // If 0, show the warning panel with the Moves image!
-            ItemWarningPanel(movesSprite);
+            // 🔥 FIXED: Now passes 2 arguments!
+            ItemWarningPanel(movesSprite, "Moves");
         }
     }
 
@@ -1236,8 +1247,6 @@ public class GridManager : MonoBehaviour
 
     public void Reshuffle()
     {
-        
-        
         //Shuffle ability logic
         if (Ability_shuffleCurrentAmount > 0)
         {
@@ -1245,9 +1254,12 @@ public class GridManager : MonoBehaviour
         }
         else
         {
-            ItemWarningPanel(shuffleSprite); // 🔥 Send the Shuffle icon
-            return; // Exit if no reshuffle ability left
+            // 🔥 FIXED: Now passes 2 arguments!
+            ItemWarningPanel(shuffleSprite, "Shuffle"); 
+            return; 
         }
+        
+
         
         AudioManager.Instance.PlaySFX("GameStart");
 
@@ -1418,7 +1430,12 @@ public class GridManager : MonoBehaviour
         if (Ability_bombCurrentAmount < 0)
         {
             Ability_bombCurrentAmount = 0;
-            ItemWarningPanel(bombSprite); // 🔥 Send the Bomb icon
+            ItemWarningPanel(bombSprite, "Bomb");
+        }
+        else
+        {
+            // 🔥 THE FIX: Tell the save file you spent the item instantly!
+            SaveNewAbilityCounts(Ability_bombCurrentAmount, Ability_colorBombCurrentAmount, Ability_extraMovesCurrentAmount, Ability_shuffleCurrentAmount);
         }
         UpdateUI();
     }
@@ -1440,7 +1457,12 @@ public class GridManager : MonoBehaviour
         if (Ability_colorBombCurrentAmount < 0)
         {
             Ability_colorBombCurrentAmount = 0;
-            ItemWarningPanel(clownSprite); // 🔥 Send the Clown icon
+            ItemWarningPanel(clownSprite, "Clown"); 
+        }
+        else
+        {
+            // 🔥 THE FIX: Tell the save file you spent the item instantly!
+            SaveNewAbilityCounts(Ability_bombCurrentAmount, Ability_colorBombCurrentAmount, Ability_extraMovesCurrentAmount, Ability_shuffleCurrentAmount);
         }
         UpdateUI();
     }
@@ -1462,8 +1484,13 @@ public class GridManager : MonoBehaviour
         if (Ability_extraMovesCurrentAmount < 0)
         {
             Ability_extraMovesCurrentAmount = 0;
-            ItemWarningPanel(movesSprite); // 🔥 Send the Moves icon
+            ItemWarningPanel(movesSprite, "Moves");
         }
+        else
+        {
+            // 🔥 THE FIX: Tell the save file you spent the item instantly!
+            SaveNewAbilityCounts(Ability_bombCurrentAmount, Ability_colorBombCurrentAmount, Ability_extraMovesCurrentAmount, Ability_shuffleCurrentAmount);
+        }   
         UpdateUI();
     }
 
@@ -1474,14 +1501,22 @@ public class GridManager : MonoBehaviour
         if (Ability_shuffleCurrentAmount < 0)
         {
             Ability_shuffleCurrentAmount = 0;
-            ItemWarningPanel(shuffleSprite); // 🔥 Send the Shuffle icon
+            ItemWarningPanel(shuffleSprite, "Shuffle");
+        }
+        else
+        {
+            // 🔥 THE FIX: Tell the save file you spent the item instantly!
+            SaveNewAbilityCounts(Ability_bombCurrentAmount, Ability_colorBombCurrentAmount, Ability_extraMovesCurrentAmount, Ability_shuffleCurrentAmount);
         }
         UpdateUI();
     }
 
 
-    public void ItemWarningPanel(Sprite iconToShow)
+    // 🔥 THE FIX: Added ", string boosterType" inside the parentheses!
+    public void ItemWarningPanel(Sprite iconToShow, string boosterType)
     {
+        missingBoosterType = boosterType; // Remembers what we need to reward
+        
         // Change the icon before showing the panel
         if (warningPanelIcon != null)
         {
@@ -1490,6 +1525,22 @@ public class GridManager : MonoBehaviour
         
         // Show the item warning panel
         itemWarningPanel.SetActive(true);
+    }
+    // Link your "WATCH VIDEO" UI button directly to this method!
+    public void OnClickWatchAdInGame()
+    {
+        StageManager stageManager = FindObjectOfType<StageManager>();
+        if (stageManager == null)
+        {
+            Debug.LogError("StageManager not found in this scene!");
+            return;
+        }
+
+        // Dynamically route to the exact ad method required
+        if (missingBoosterType == "Bomb") stageManager.ShowRewardedAd_Bomb();
+        else if (missingBoosterType == "Clown") stageManager.ShowRewardedAd_Clown();
+        else if (missingBoosterType == "Moves") stageManager.ShowRewardedAd_Moves();
+        else if (missingBoosterType == "Shuffle") stageManager.ShowRewardedAd_Shuffle();
     }
 
 

@@ -617,7 +617,6 @@ public class StageManager : MonoBehaviour
 
     public void ShowRewardedAd_Clown()
     {
-        CheckForInternetConnection();
 
         if (rewardedAd != null && rewardedAd.CanShowAd())
         {
@@ -625,15 +624,21 @@ public class StageManager : MonoBehaviour
             {
                 Debug.Log("Reward earned from ad: " + reward.Amount);
                 
-                // 🔥 FIX 1: Use 'Add' instead of 'Send' (matches Spin.cs)
                 PlayerDataManager.Instance.AddColorBombAbility(1);
-                PlayerDataManager.Instance.SavePlayerData(); // Force a save
+                PlayerDataManager.Instance.SavePlayerData(); 
 
-                // 🔥 FIX 2: Manually increment the StageManager's active tracker
                 if (playerData != null) playerData.PlayerColorBombAbilityCount += 1;
 
-                ColorBombGetFromAdsPanel.SetActive(true); 
-                ShowTotalXPandTotalStars(); // 🔥 Force the text to redraw instantly!
+                // 🔥 THE FIX: Check if the panel is assigned before turning it on!
+                if (ColorBombGetFromAdsPanel != null)
+                {
+                    ColorBombGetFromAdsPanel.SetActive(true); 
+                }
+
+                ShowTotalXPandTotalStars(); 
+                
+                GridManager grid = FindObjectOfType<GridManager>();
+                if (grid != null) grid.RefreshAbilities(); 
             });
         }
         else
@@ -658,8 +663,15 @@ public class StageManager : MonoBehaviour
                 // 🔥 FIX 2
                 if (playerData != null) playerData.PlayerBombAbilityCount += 1;
 
-                BombGetFromAdsPanel.SetActive(true); 
-                ShowTotalXPandTotalStars(); 
+                // 🔥 THE FIX: Check if the panel is assigned before turning it on!
+                if (BombGetFromAdsPanel != null)
+                {
+                    BombGetFromAdsPanel.SetActive(true); 
+                }
+
+                ShowTotalXPandTotalStars();
+                GridManager grid = FindObjectOfType<GridManager>();
+                if (grid != null) grid.RefreshAbilities(); 
             });
         }
         else
@@ -684,8 +696,14 @@ public class StageManager : MonoBehaviour
                 // 🔥 FIX 2
                 if (playerData != null) playerData.PlayerExtraMoveAbilityCount += 1;
 
-                ExtraMovesGetFromAdsPanel.SetActive(true); 
+                // 🔥 THE FIX: Check if the panel is assigned before turning it on!
+                if (ExtraMovesGetFromAdsPanel != null)
+                {
+                    ExtraMovesGetFromAdsPanel.SetActive(true);
+                }
                 ShowTotalXPandTotalStars(); 
+                GridManager grid = FindObjectOfType<GridManager>();
+                if (grid != null) grid.RefreshAbilities();
             });
         }
         else
@@ -706,9 +724,42 @@ public class StageManager : MonoBehaviour
                 PlayerDataManager.Instance.SkipEnergyGenerateTime();
                 PlayerDataManager.Instance.SavePlayerData(); // Force a save
 
-                NoEnergyLeftPanel.SetActive(false); 
+                // 🔥 THE FIX: Check if the panel is assigned before turning it on!
+                if (NoEnergyLeftPanel != null)
+                {
+                    NoEnergyLeftPanel.SetActive(false);
+                }
                 energyTimerUI.UpdateUI();
                 ShowTotalXPandTotalStars(); 
+            });
+        }
+        else
+        {
+            Debug.LogWarning("Rewarded ad not ready. Reloading...");
+            LoadRewardedAd();
+        }
+    }
+    public void ShowRewardedAd_Shuffle()
+    {
+        CheckForInternetConnection();
+
+        if (rewardedAd != null && rewardedAd.CanShowAd())
+        {
+            rewardedAd.Show((Reward reward) =>
+            {
+                Debug.Log("Shuffle reward earned from ad!");
+                
+                // Add the ability to your data manager and save
+                PlayerDataManager.Instance.AddShuffleAbility(1); // Make sure this matches your PlayerDataManager method name
+                PlayerDataManager.Instance.SavePlayerData(); 
+
+                if (playerData != null) playerData.PlayerShuffleAbilityCount += 1;
+                
+                ShowTotalXPandTotalStars(); 
+
+                // Tell the GridManager to refresh the numbers on screen
+                GridManager grid = FindObjectOfType<GridManager>();
+                if (grid != null) grid.RefreshAbilities();
             });
         }
         else
