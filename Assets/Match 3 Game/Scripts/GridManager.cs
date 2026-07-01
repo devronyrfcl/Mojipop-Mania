@@ -154,6 +154,8 @@ public class GridManager : MonoBehaviour
     public GameObject verticalClearParticle;
 
     public bool isTimerRunning = false;
+    private bool isTimeExpired = false;
+    private bool hasMadeFinalSwipeAfterTimeExpired = false;
     //public string fileName = "playerdata.json";
 
     //private string SavePath; // = Path.Combine(Application.persistentDataPath, "playerdata.json");
@@ -300,6 +302,8 @@ public class GridManager : MonoBehaviour
         {
             currentTime = 0;
             isTimerRunning = false;
+            isTimeExpired = true;
+            hasMadeFinalSwipeAfterTimeExpired = false;
             OnTimeUp();
         }
 
@@ -403,6 +407,10 @@ public class GridManager : MonoBehaviour
 
     public void GameOverLogic()
     {
+        if (isTimeExpired && !hasMadeFinalSwipeAfterTimeExpired)
+        {
+            return;
+        }
 
 
 
@@ -600,7 +608,9 @@ public class GridManager : MonoBehaviour
         //wait for 1 second
         yield return new WaitForSeconds(1f);
 
-        if (currentTarget1Count <= 0 && currentTarget2Count <= 0)
+        bool levelCompleted = currentTarget1Count <= 0 && currentTarget2Count <= 0;
+
+        if (levelCompleted)
         {
             gameOverTitleText.text = "Congratulations!";
             Shine1.SetActive(true);
@@ -616,7 +626,6 @@ public class GridManager : MonoBehaviour
             Shine1.SetActive(false);
             Shine2.SetActive(true);
             AudioManager.Instance.PlaySFX("GameLose");
-            PlayerDataManager.Instance.RemoveEnergy(1);
             RestartButton.gameObject.SetActive(true);
             LoseMainMenuButton.SetActive(true);
             isGameOver = true;
@@ -638,9 +647,11 @@ public class GridManager : MonoBehaviour
         GameOverPanel.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.OutBack); // Scale to normal size
         // Optionally, you can also reset the game state or show options to restart or exit
         // Reset the grid and pieces
-        //CalculateStarAndShow();
-        //delay CalculateStarAndShow() for 0.5 seconds
-        Invoke("CalculateStarAndShow", 0.5f);
+        if (levelCompleted)
+        {
+            //delay CalculateStarAndShow() for 0.5 seconds
+            Invoke("CalculateStarAndShow", 0.5f);
+        }
 
 
 
@@ -796,8 +807,6 @@ public class GridManager : MonoBehaviour
 
         PlayerDataManager.Instance.GetCurrentLevel(); // Initialize current level after creating new player
 
-        //deduct 1 energy on exit to main menu
-        PlayerDataManager.Instance.RemoveEnergy(1);
         //save player data
         PlayerDataManager.Instance.SavePlayerData();
 
@@ -1191,27 +1200,29 @@ public class GridManager : MonoBehaviour
 
     public void OnMoveButtonClick()
     {
+        // Check if player has enough extra moves before starting the animation
         if (Ability_extraMovesCurrentAmount > 0)
         {
-            for (int i = 0; i < 5; i++)
+            // 🔥 THE FIX: Removed the "for (i < 5)" loop so it only spawns ONE image!
+            GameObject moveImg = Instantiate(moveImage, imageSpawm.position, Quaternion.identity, mainCanvas.transform);
+            moveImg.transform.localScale = Vector3.zero; // Start from scale 0
+            moveImg.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack); // Scale to normal size
+            
+            // Move to imageTarget position instantly without the loop delay
+            moveImg.transform.DOMove(imageTarget.position, 0.5f).SetEase(Ease.InOutQuad).OnComplete(() =>
             {
-                GameObject moveImg = Instantiate(moveImage, imageSpawm.position, Quaternion.identity, mainCanvas.transform);
-                moveImg.transform.localScale = Vector3.zero; 
-                moveImg.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack); 
-                
-                moveImg.transform.DOMove(imageTarget.position, 0.5f).SetEase(Ease.InOutQuad).SetDelay(i * 0.1f).OnComplete(() =>
-                {
-                    currentMoves += 1;
-                    UpdateUI();
-                    AudioManager.Instance.PlaySFX("Pop_5");
-                    Destroy(moveImg); 
-                });
-            }
+                currentMoves += 1; // Exactly +1 Move!
+                UpdateUI();
+                AudioManager.Instance.PlaySFX("Pop_5");
+                Destroy(moveImg); // Destroy after reaching target
+            });
+
+            // Deduct extra moves ability count by 1
             DeductAbility_ExtraMoves(1);
         }
         else
         {
-            // 🔥 FIXED: Now passes 2 arguments!
+            // If 0, show the warning panel with the Moves image!
             ItemWarningPanel(movesSprite, "Moves");
         }
     }
@@ -1396,7 +1407,15 @@ public class GridManager : MonoBehaviour
     private void OnTimeUp()
     {
         Debug.Log("Time is up!");
-        // maybe add fail screen logic here or something
+        // Wait for one final swipe before showing game over.
+    }
+
+    public void RegisterFinalSwipeAfterTimeExpired()
+    {
+        if (isTimeExpired)
+        {
+            hasMadeFinalSwipeAfterTimeExpired = true;
+        }
     }
 
     public void ResetUI()
@@ -1527,20 +1546,47 @@ public class GridManager : MonoBehaviour
         itemWarningPanel.SetActive(true);
     }
     // Link your "WATCH VIDEO" UI button directly to this method!
+// Link your "WATCH VIDEO" UI button directly to this method!
     public void OnClickWatchAdInGame()
     {
-        StageManager stageManager = FindObjectOfType<StageManager>();
-        if (stageManager == null)
+        // 🔥 We talk directly to the AdsManager now! No StageManager needed.
+        
+        if (missingBoosterType == "Bomb")
         {
-            Debug.LogError("StageManager not found in this scene!");
-            return;
+            AdsManager.Instance.ShowRewardedAd(() => 
+            {
+                PlayerDataManager.Instance.AddBombAbility(1);
+                PlayerDataManager.Instance.SavePlayerData(); 
+                RefreshAbilities(); 
+            });
         }
-
-        // Dynamically route to the exact ad method required
-        if (missingBoosterType == "Bomb") stageManager.ShowRewardedAd_Bomb();
-        else if (missingBoosterType == "Clown") stageManager.ShowRewardedAd_Clown();
-        else if (missingBoosterType == "Moves") stageManager.ShowRewardedAd_Moves();
-        else if (missingBoosterType == "Shuffle") stageManager.ShowRewardedAd_Shuffle();
+        else if (missingBoosterType == "Clown")
+        {
+            AdsManager.Instance.ShowRewardedAd(() => 
+            {
+                PlayerDataManager.Instance.AddColorBombAbility(1);
+                PlayerDataManager.Instance.SavePlayerData(); 
+                RefreshAbilities(); 
+            });
+        }
+        else if (missingBoosterType == "Moves")
+        {
+            AdsManager.Instance.ShowRewardedAd(() => 
+            {
+                PlayerDataManager.Instance.AddExtraMoveAbility(1);
+                PlayerDataManager.Instance.SavePlayerData();
+                RefreshAbilities();
+            });
+        }
+        else if (missingBoosterType == "Shuffle")
+        {
+            AdsManager.Instance.ShowRewardedAd(() => 
+            {
+                PlayerDataManager.Instance.AddShuffleAbility(1); 
+                PlayerDataManager.Instance.SavePlayerData(); 
+                RefreshAbilities();
+            });
+        }
     }
 
 
