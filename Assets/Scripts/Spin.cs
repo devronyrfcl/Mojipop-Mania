@@ -19,13 +19,13 @@ public class Spin : MonoBehaviour
     public GameObject watchAdBtn;
 
     [Header("Spin Limit")]
-    public int spinCount = 5;
+    public int spinCount = 1;
     public TextMeshProUGUI spinLeftText;
 
     [Header("Bonus Count System")]
-    public int bonusCount = 3; // Current available bonus ads
-    public TextMeshProUGUI bonusCountText; // Text to show count or depleted message
-    public Button watchAdButton; // Reference to watch ad button component
+    public int bonusCount = 3; 
+    public TextMeshProUGUI bonusCountText; 
+    public Button watchAdButton; 
 
     private bool isSpinning = false;
     private float finalAngle;
@@ -43,13 +43,10 @@ public class Spin : MonoBehaviour
     public GameObject ShuffleImage;
     public TextMeshProUGUI ShuffleText;
 
-    public string rewardedAdUnitId = "ca-app-pub-3940256099942544/5224354917"; // test ad unit id
-
-    private RewardedAd rewardedAd;
-
-    // ✅ PlayerPrefs Keys
     private const string BONUS_COUNT_KEY = "BonusCount";
     private const string LAST_BONUS_DATE_KEY = "LastBonusDate";
+    private const string SPIN_COUNT_KEY = "SpinCount";
+    private const string LAST_SPIN_DATE_KEY = "LastSpinDate";
 
     void Start()
     {
@@ -57,110 +54,46 @@ public class Spin : MonoBehaviour
         ResetRewardUI();
 
         LoadSpinCount();
-        LoadBonusCount(); // ✅ Load bonus count
-        CheckAndResetDailyBonus(); // ✅ Check for daily reset
-        UpdateBonusCountUI(); // ✅ Update UI
-
-        LoadRewardedAd();
+        LoadBonusCount(); 
+        CheckAndResetDailyBonus(); 
+        UpdateBonusCountUI(); 
     }
 
     #region "Ad Loading"
-    void LoadRewardedAd()
-    {
-        var adRequest = new AdRequest();
-
-        RewardedAd.Load(rewardedAdUnitId, adRequest, (RewardedAd ad, LoadAdError error) =>
-        {
-            if (error != null)
-            {
-                Debug.LogError("Failed to load rewarded ad: " + error);
-                rewardedAd = null;
-                return;
-            }
-
-            rewardedAd = ad;
-            Debug.Log("Rewarded ad loaded successfully");
-
-            rewardedAd.OnAdFullScreenContentClosed += () =>
-            {
-                Debug.Log("Ad closed. Reloading new ad...");
-                LoadRewardedAd();
-            };
-
-            rewardedAd.OnAdFullScreenContentFailed += (AdError err) =>
-            {
-                Debug.LogError("Ad failed to show: " + err);
-            };
-
-            rewardedAd.OnAdPaid += (AdValue value) =>
-            {
-                Debug.Log("Rewarded Ad revenue: " + value.Value);
-            };
-        });
-    }
-
     public void ShowRewardedAd()
     {
-        // ✅ Check if bonus count is available
         if (bonusCount <= 0)
         {
             Debug.LogWarning("No bonus ads left today!");
             return;
         }
 
-        if (rewardedAd != null)
+        // 🔥 Uses your new AdsManager!
+        AdsManager.Instance.ShowRewardedAd(() => 
         {
-            rewardedAd.Show((Reward reward) =>
-            {
-                Debug.Log("Reward earned from ad: " + reward.Amount);
-
-                // ✅ Deduct bonus count
-                UseBonusCount();
-
-                // ⭐ Give the player +1 spin
-                AddBonusSpin();
-            });
-        }
-        else
-        {
-            Debug.LogWarning("Rewarded ad not ready. Reloading...");
-            LoadRewardedAd();
-        }
+            UseBonusCount();
+            AddBonusSpin();
+        });
     }
     #endregion
 
     #region "Bonus Count System"
-
-    /// <summary>
-    /// Load bonus count from PlayerPrefs
-    /// </summary>
     void LoadBonusCount()
     {
-        if (PlayerPrefs.HasKey(BONUS_COUNT_KEY))
-        {
-            bonusCount = PlayerPrefs.GetInt(BONUS_COUNT_KEY);
-        }
+        if (PlayerPrefs.HasKey(BONUS_COUNT_KEY)) bonusCount = PlayerPrefs.GetInt(BONUS_COUNT_KEY);
         else
         {
-            bonusCount = 3; // Default value
+            bonusCount = 3; 
             SaveBonusCount();
         }
-        Debug.Log($"Loaded Bonus Count: {bonusCount}");
     }
 
-    /// <summary>
-    /// Save bonus count to PlayerPrefs
-    /// </summary>
     void SaveBonusCount()
     {
         PlayerPrefs.SetInt(BONUS_COUNT_KEY, bonusCount);
         PlayerPrefs.Save();
-        Debug.Log($"Saved Bonus Count: {bonusCount}");
     }
 
-    /// <summary>
-    /// Check if a new day has started and add 1 bonus
-    /// </summary>
     void CheckAndResetDailyBonus()
     {
         string today = DateTime.UtcNow.ToString("yyyy-MM-dd");
@@ -168,30 +101,12 @@ public class Spin : MonoBehaviour
 
         if (string.IsNullOrEmpty(lastDate) || lastDate != today)
         {
-            // ✅ New day detected - add 1 bonus (up to max 3)
-            if (bonusCount < 3)
-            {
-                bonusCount++;
-                Debug.Log($"Daily Bonus Added! New count: {bonusCount}");
-            }
-            else
-            {
-                Debug.Log("Bonus count already at max (3)");
-            }
-
-            // Update last bonus date
+            if (bonusCount < 3) bonusCount++;
             PlayerPrefs.SetString(LAST_BONUS_DATE_KEY, today);
             SaveBonusCount();
         }
-        else
-        {
-            Debug.Log($"Daily bonus already generated today. Current count: {bonusCount}");
-        }
     }
 
-    /// <summary>
-    /// Use one bonus count when watching ad
-    /// </summary>
     void UseBonusCount()
     {
         if (bonusCount > 0)
@@ -199,20 +114,15 @@ public class Spin : MonoBehaviour
             bonusCount--;
             SaveBonusCount();
             UpdateBonusCountUI();
-            Debug.Log($"Bonus Count Used! Remaining: {bonusCount}");
         }
     }
 
-    /// <summary>
-    /// Update bonus count UI elements
-    /// </summary>
     void UpdateBonusCountUI()
     {
         if (bonusCountText != null)
         {
             if (spinCount <= 0)
             {
-                // ✅ Show bonus count or depleted message when spin count is 0
                 if (bonusCount <= 0)
                 {
                     bonusCountText.text = "No ads bonus left! Come back tomorrow.";
@@ -220,40 +130,43 @@ public class Spin : MonoBehaviour
                 }
                 else
                 {
-                    //bonusCountText.text = $"{bonusCount}";
                     bonusCountText.text = "Bonus: " + $"{bonusCount}";
                 }
                 bonusCountText.gameObject.SetActive(true);
             }
             else
             {
-                // ✅ Hide text when spin count is 1 or more
                 bonusCountText.text = "";
                 bonusCountText.gameObject.SetActive(false);
             }
         }
 
-        // Make watch ad button non-interactable when no bonuses left
         if (watchAdButton != null)
         {
             watchAdButton.interactable = (bonusCount > 0);
-            Debug.Log($"Watch Ad Button Interactable: {bonusCount > 0}");
         }
     }
-
     #endregion
 
     #region "Spin System"
-
     void LoadSpinCount()
     {
-        if (PlayerPrefs.HasKey("SpinCount"))
+        string today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        string lastDate = PlayerPrefs.GetString(LAST_SPIN_DATE_KEY, "");
+
+        if (string.IsNullOrEmpty(lastDate) || lastDate != today)
         {
-            spinCount = PlayerPrefs.GetInt("SpinCount");
+            spinCount = 1;
+            PlayerPrefs.SetString(LAST_SPIN_DATE_KEY, today);
+            SaveSpinCount();
+        }
+        else if (PlayerPrefs.HasKey(SPIN_COUNT_KEY))
+        {
+            spinCount = Mathf.Clamp(PlayerPrefs.GetInt(SPIN_COUNT_KEY), 0, 1);
         }
         else
         {
-            spinCount = 3; // default value
+            spinCount = 1;
             SaveSpinCount();
         }
         UpdateSpinText();
@@ -262,25 +175,24 @@ public class Spin : MonoBehaviour
 
     void SaveSpinCount()
     {
-        PlayerPrefs.SetInt("SpinCount", spinCount);
+        spinCount = Mathf.Clamp(spinCount, 0, 1);
+        PlayerPrefs.SetInt(SPIN_COUNT_KEY, spinCount);
         PlayerPrefs.Save();
     }
 
     public void StartSpin()
     {
-        if (isSpinning) return; // 🔒 block spam clicks
+        if (isSpinning) return; 
 
         if (spinCount > 0)
         {
             spinCount--;
             UpdateSpinText();
-
             isSpinning = true;
             spinNowBtn.SetActive(false);
 
             float randomAngle = UnityEngine.Random.Range(0f, 360f);
             float totalAngle = (360f * spinRounds) + randomAngle;
-
             spinObject.transform.DOKill();
 
             spinObject.transform
@@ -292,8 +204,6 @@ public class Spin : MonoBehaviour
                     finalAngle = spinObject.transform.eulerAngles.z;
 
                     HandleResult(finalAngle);
-                    // checkSpinCountForAds();
-
                     onSpinComplete.Invoke();
                 });
 
@@ -301,17 +211,13 @@ public class Spin : MonoBehaviour
         }
         else
         {
-            Debug.Log("No spins left! Watch ad for more.");
             checkSpinCountForAds();
         }
     }
 
     private void UpdateSpinText()
     {
-        if (spinLeftText != null)
-        {
-            spinLeftText.text = "Spin left: " + spinCount;
-        }
+        if (spinLeftText != null) spinLeftText.text = "Spin left: " + spinCount;
     }
 
     void checkSpinCountForAds()
@@ -326,26 +232,20 @@ public class Spin : MonoBehaviour
             if (spinNowBtn != null) spinNowBtn.SetActive(true);
             if (watchAdBtn != null) watchAdBtn.SetActive(false);
         }
-
-        // ✅ Also update bonus count UI when checking spin state
         UpdateBonusCountUI();
     }
 
     public void AddBonusSpin()
     {
-        spinCount += 1;
+        spinCount = Mathf.Clamp(spinCount + 1, 0, 1);
         UpdateSpinText();
-        SaveSpinCount(); // ✅ Save immediately
+        SaveSpinCount(); 
         if (spinLeftText != null) spinLeftText.gameObject.SetActive(true);
         checkSpinCountForAds();
     }
-
     #endregion
 
-
-
     #region "Spin Results"
-
     private void HandleResult(float angle)
     {
         ResetRewardUI();
@@ -365,74 +265,58 @@ public class Spin : MonoBehaviour
 
     void Result_1()
     {
-        Debug.Log("Won Color Bomb x1!");
         colorBombImage.SetActive(true);
         colorBombText.text = "1";
         PlayerDataManager.Instance.AddColorBombAbility(1);
-        FindObjectOfType<StageManager>()?.SyncLocalBooster("ColorBomb", 1); // 🔥 Instant Sync
     }
 
     void Result_2()
     {
-        Debug.Log("Won Moves x1!");
         extraMoveImage.SetActive(true);
         extraMoveText.text = "1";
         PlayerDataManager.Instance.AddExtraMoveAbility(1);
-        FindObjectOfType<StageManager>()?.SyncLocalBooster("Moves", 1); // 🔥 Instant Sync
     }
 
     void Result_3()
     {
-        Debug.Log("Won Moves x2!");
         extraMoveImage.SetActive(true);
         extraMoveText.text = "2";
         PlayerDataManager.Instance.AddExtraMoveAbility(2);
-        FindObjectOfType<StageManager>()?.SyncLocalBooster("Moves", 2); // 🔥 Instant Sync
     }
 
     void Result_4()
     {
-        Debug.Log("Won Bomb x1");
         bombImage.SetActive(true);
         bombText.text = "1";
         PlayerDataManager.Instance.AddBombAbility(1);
-        FindObjectOfType<StageManager>()?.SyncLocalBooster("Bomb", 1); // 🔥 Instant Sync
     }
 
     void Result_5()
     {
-        Debug.Log("Won Color Bomb x1!");
         colorBombImage.SetActive(true);
         colorBombText.text = "1";
         PlayerDataManager.Instance.AddColorBombAbility(1);
-        FindObjectOfType<StageManager>()?.SyncLocalBooster("ColorBomb", 1); // 🔥 Instant Sync
     }
 
     void Result_6()
     {
-        Debug.Log("Won Vibe x1");
         vibeImage.SetActive(true);
         vibeText.text = "1";
         PlayerDataManager.Instance.AddEnergy(1);
-        FindObjectOfType<StageManager>()?.ShowTotalXPandTotalStars(); // Energy syncs automatically here!
     }
 
     void Result_7()
     {
-        Debug.Log("Won Moves x1!");
         extraMoveImage.SetActive(true);
         extraMoveText.text = "1";
         PlayerDataManager.Instance.AddExtraMoveAbility(1);
-        FindObjectOfType<StageManager>()?.SyncLocalBooster("Moves", 1); // 🔥 Instant Sync
     }
 
     void Result_8()
     {
-        Debug.Log("Won Shuffle x1");
         ShuffleImage.SetActive(true);
         ShuffleText.text = "1";
         PlayerDataManager.Instance.AddShuffleAbility(1);
-        FindObjectOfType<StageManager>()?.SyncLocalBooster("Shuffle", 1); // 🔥 Instant Sync
     }
 
     void ResetRewardUI()
@@ -457,8 +341,12 @@ public class Spin : MonoBehaviour
         PlayerDataManager.Instance.SavePlayerData();
         SaveSpinCount();
         
-        // Note: I removed the old RefreshLocalUI() call from here because the new instant sync handles it perfectly!
+        // 🔥 FIX: Tell StageManager to immediately redraw the text with the new item!
+        StageManager stage = FindObjectOfType<StageManager>();
+        if (stage != null)
+        {
+            stage.ShowTotalXPandTotalStars();
+        }
     }
-
 #endregion
 }

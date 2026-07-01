@@ -182,6 +182,8 @@ public class Piece : MonoBehaviour
 
         otherPiece = targetPieceObj;
 
+        gridManager.RegisterFinalSwipeAfterTimeExpired();
+
         Vector2 myTarget = targetPiece.transform.position;
         Vector2 otherTarget = transform.position;
         float swipeTime = 0.3f;
@@ -543,6 +545,9 @@ public class Piece : MonoBehaviour
             gridManager.grid[X, Y] = gameObject;
             gridManager.grid[other.X, other.Y] = otherPiece;
         }
+
+        gridManager.DeductMove();
+        gridManager.GameOverLogic();
         gridManager.canControl = true;
     }
 

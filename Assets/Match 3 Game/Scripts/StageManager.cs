@@ -1,85 +1,56 @@
-﻿using DG.Tweening; // ✅ Needed for DOTween animations
-using System.Collections; // ✅ Needed for coroutines
+﻿using DG.Tweening; 
+using System.Collections;
+using System.Collections.Generic; 
 using System.IO;
-using TMPro; // ✅ Needed for text display
+using TMPro; 
 using UnityEngine;
-using UnityEngine.SceneManagement; // ✅ Needed for scene loading
-using UnityEngine.UI; // ✅ Needed for UI components
+using UnityEngine.SceneManagement; 
+using UnityEngine.UI; 
 using PlayFab;
 using PlayFab.ClientModels;
-using GoogleMobileAds.Api;
 
 public class StageManager : MonoBehaviour
 {
     [Header("Level Button References (Order matters)")]
-    public LevelButtonManager[] levelButtons; // Assign in order in Inspector
+    public LevelButtonManager[] levelButtons; 
 
     public TMP_Text TotalStar;
     public TMP_Text TotalXP;
     public TMP_Text Name;
-    public GameObject EmojisImage; // Reference to the emojis image GameObject
+    public GameObject EmojisImage; 
 
     public TMP_Text bombAbilityCount;
     public TMP_Text colorBombAbilityCount;
     public TMP_Text extraMoveAbilityCount;
     public TMP_Text ShuffleAbilityCount;
 
-    public GameObject namePanel; // Reference to the name panel GameObject
-
+    public GameObject namePanel; 
     public int currentLevel;
 
-    public HomeButtonManager mapHomeButton; // Reference to the HomeButtonManager
+    public HomeButtonManager mapHomeButton; 
     public HomeButtonManager spinButton;
-
     public GameObject shopUI;
 
     public int totalStars;
     public int totalXP;
-    public TMP_InputField userNameInput; // Reference to the input field for username
+    public TMP_InputField userNameInput; 
 
-    public GameObject UserNameUpdatedPanel; // Panel to show when username is updated
+    public GameObject UserNameUpdatedPanel; 
 
-    public GameObject ColorBombGetFromAdsPanel; // Panel to show when color bomb is rewarded from ads
+    public GameObject ColorBombGetFromAdsPanel; 
     public GameObject BombGetFromAdsPanel;
     public GameObject ExtraMovesGetFromAdsPanel;
 
-    public TMP_Text CurrentEnergyText; // Text to show current energy
-    public GameObject NoEnergyLeftPanel; // Panel to show when no energy left
+    public TMP_Text CurrentEnergyText; 
+    public GameObject NoEnergyLeftPanel; 
+    public EnergyTimerUI energyTimerUI; 
 
-    public EnergyTimerUI energyTimerUI; // Reference to the EnergyTimerUI script
-
-    public GameObject NoInternetConnectionPanel; // Panel to show when no internet connection
-
+    public GameObject NoInternetConnectionPanel; 
     public GameObject ExitPanel;
 
-    private PlayerData playerData;
-
     private const string SelectedLevelIndexKey = "SelectedLevelIndex";
+    private int selectedLevelIndex = 0; 
 
-    private int selectedLevelIndex = 0; // 0-based, for the clicked button only
-
-    private const string rewardedAdUnitId =
-#if UNITY_ANDROID
-        "ca-app-pub-5068573171198161/1757128667";
-#elif UNITY_IOS
-        "ca-app-pub-5068573171198161/3280588859";
-#else
-        "";
-#endif
-
-    private const string bannerAdUnitId =
-#if UNITY_ANDROID
-            "ca-app-pub-5068573171198161/2958529693";
-#elif UNITY_IOS
-            "ca-app-pub-5068573171198161/6281852798";
-#else
-            "";
-#endif
-
-    private RewardedAd rewardedAd;
-    private BannerView bannerView;
-
-    // 🔥 THIS IS NEW: Forces the UI to update whenever this script's GameObject is turned on
     private void OnEnable()
     {
         RefreshLocalUI();
@@ -89,87 +60,22 @@ public class StageManager : MonoBehaviour
     {
         mapHomeButton.ShowButton(); 
         AudioManager.Instance.PlayMusic("MenuBG");
-        LoadPlayerData();
-        ApplyDataToButtons();
-        ShowTotalXPandTotalStars();
+        
+        LoadPlayerData(); 
 
         Application.targetFrameRate = 60;
-
-        // 🔥 THE FIX: Use standard MobileAds.Initialize
-        MobileAds.Initialize((InitializationStatus status) =>
-        {
-            LoadRewardedAd();
-            LoadBannerAd();
-            InvokeRepeating(nameof(AdWatchdog), 10f, 10f);
-        });
-
         namePanel.SetActive(false); 
     }
-    // 🔥 THE FIX: The background watchdog
-    private void AdWatchdog()
-    {
-        // If the ad failed to load, was destroyed, or hasn't loaded yet, fetch it automatically!
-        if (rewardedAd == null)
-        {
-            LoadRewardedAd();
-        }
-    }
-    // 🔥 THE FIX: Instantly updates StageManager's local memory and redraws the text!
+
     public void SyncLocalBooster(string type, int amount)
     {
-        if (playerData != null)
-        {
-            if (type == "Bomb") playerData.PlayerBombAbilityCount += amount;
-            else if (type == "ColorBomb") playerData.PlayerColorBombAbilityCount += amount;
-            else if (type == "Moves") playerData.PlayerExtraMoveAbilityCount += amount;
-            else if (type == "Shuffle") playerData.PlayerShuffleAbilityCount += amount;
-        }
-        ShowTotalXPandTotalStars(); // Force the text to redraw instantly
-    }
-
-    private void LoadBannerAd()
-    {
-        if (bannerView != null)
-        {
-            bannerView.Destroy();
-            bannerView = null;
-        }
-
-        if (string.IsNullOrEmpty(bannerAdUnitId))
-        {
-            Debug.LogWarning("Banner ad unit ID is not set for this platform.");
-            return;
-        }
-
-        bannerView = new BannerView(bannerAdUnitId, AdSize.Banner, AdPosition.Top);
-        var adRequest = new AdRequest();
-        bannerView.LoadAd(adRequest);
-    }
-
-    private void OnDestroy()
-    {
-        if (bannerView != null)
-        {
-            bannerView.Destroy();
-            bannerView = null;
-        }
-    }
-
-    private string XorEncryptDecrypt(string data, string key = "Heil")
-    {
-        char[] result = new char[data.Length];
-        for (int i = 0; i < data.Length; i++)
-        {
-            result[i] = (char)(data[i] ^ key[i % key.Length]);
-        }
-        return new string(result);
+        ShowTotalXPandTotalStars(); 
     }
 
     private void Update()
     {
         GetCurrentLevelInt();
 
-        //if press back button on android then active exit panel
         if (Input.GetKeyDown(KeyCode.Escape))
         {
             ExitPanel.SetActive(true);
@@ -179,13 +85,9 @@ public class StageManager : MonoBehaviour
     void CheckForInternetConnection()
     {
         if (PlayerDataManager.Instance.isOnline == false)
-        {
             ActiveNoInternetPanel();
-        }
         else
-        {
             NoInternetConnectionPanel.SetActive(false);
-        }
     }
 
     public void CheckForInternetConnectionForUIButton()
@@ -196,59 +98,65 @@ public class StageManager : MonoBehaviour
 
     private void LoadPlayerData()
     {
-        //load player data from playfab if online. no json file used here
         if (PlayerDataManager.Instance.isOnline)
         {
-            Debug.Log("StageManager: Online mode - loading data from PlayFab.");
-            FetchPlayerDataFromPlayFab(); // Moved to Start() to avoid nested calls
+            FetchPlayerDataFromPlayFab(); 
         }
         else
         {
-            Debug.Log("StageManager: Offline mode - loading local JSON data.");
-            string savePath = Path.Combine(Application.persistentDataPath, "playerdata.json");
-            if (File.Exists(savePath))
-            {
-                string encryptedJson = File.ReadAllText(savePath);
-                // Decrypt before loading
-                string decryptedJson = XorEncryptDecrypt(encryptedJson);
-                playerData = JsonUtility.FromJson<PlayerData>(decryptedJson);
-                Debug.Log("Player data loaded (decrypted).");
-                GetCurrentLevelInt();
-            }
-            else
-            {
-                Debug.LogWarning("Save file not found, creating new player...");
-                PlayerDataManager.Instance.CreateNewPlayer("Rookie", System.Guid.NewGuid().ToString());
-                PlayerDataManager.Instance.SavePlayerData();
-                GetCurrentLevelInt();
-            }
+            ApplyDataToButtons();
+            ShowTotalXPandTotalStars();
         }
     }
 
-    private void ApplyDataToButtons()
+private void ApplyDataToButtons()
     {
+        // Safety check
+        if (PlayerDataManager.Instance == null || PlayerDataManager.Instance.playerData == null) return;
+
+        var pData = PlayerDataManager.Instance.playerData;
+
+        // 🔥 THE CLOUD REPAIR: If PlayFab gives us a corrupted list, recreate it!
+        if (pData.Levels == null)
+        {
+            pData.Levels = new List<LevelInfo>();
+        }
+
+        // 🔥 FORCE UNLOCK LEVEL 1: Check if Level 1 exists in the save file
+        LevelInfo level1 = pData.Levels.Find(l => l.LevelID == 1);
+        if (level1 == null)
+        {
+            // If it's completely missing, add it and unlock it
+            pData.Levels.Add(new LevelInfo { LevelID = 1, Stars = 0, XP = 0, LevelLocked = 0 });
+            PlayerDataManager.Instance.SavePlayerData(); // Save the repair to PlayFab
+        }
+        else if (level1.LevelLocked == 1)
+        {
+            // If it exists but is accidentally locked, force it open
+            level1.LevelLocked = 0;
+            PlayerDataManager.Instance.SavePlayerData(); // Save the repair to PlayFab
+        }
+
+        // Draw the buttons on the map
         for (int i = 0; i < levelButtons.Length; i++)
         {
             LevelButtonManager btn = levelButtons[i];
-            btn.SetLevelId(i + 1); // Levels start from 1
-
-            btn.isCurrentLevel = (i + 1 == currentLevel); // Levels start from 1
-            LevelInfo levelInfo = playerData.Levels.Find(l => l.LevelID == btn.levelId);
+            btn.SetLevelId(i + 1); 
+            btn.isCurrentLevel = (i + 1 == currentLevel); 
+            
+            LevelInfo levelInfo = pData.Levels.Find(l => l.LevelID == btn.levelId);
             if (levelInfo != null)
             {
                 btn.SetStar(levelInfo.Stars);
                 btn.SetLocked(levelInfo.LevelLocked == 1);
-
-                // 🔥 Make button not interactable if locked
                 btn.GetComponent<Button>().interactable = (levelInfo.LevelLocked == 0);
             }
             else
             {
-                // If level not found in JSON, default: locked & 0 stars
+                // Any levels not found in the save file default to locked
                 btn.SetStar(0);
                 btn.SetLocked(true);
-
-                btn.GetComponent<Button>().interactable = false; // 🔒
+                btn.GetComponent<Button>().interactable = false; 
             }
         }
         SendDataToLeaderBoard();
@@ -257,20 +165,13 @@ public class StageManager : MonoBehaviour
     IEnumerator EmojiLoading()
     {
         RectTransform emojiRect = EmojisImage.GetComponent<RectTransform>();
-
-        // ✅ Move EmojisImage into view (Y: 2150 → -1777)
         yield return emojiRect.DOAnchorPosY(-1250f, 1f).SetEase(Ease.InOutQuad).WaitForCompletion();
 
-        CheckForInternetConnection(); // ✅ Optionally add this to immediately show panel if still offline
-
-        // ✅ Wait 1 second
+        CheckForInternetConnection(); 
         yield return new WaitForSeconds(1f);
 
-        //if no internet then active no internet panel. if found internet then check for internet connection. 
         if (PlayerDataManager.Instance.isOnline == false)
-        {
             ActiveNoInternetPanel();
-        }
         else
         {
             NoInternetConnectionPanel.SetActive(false);
@@ -288,8 +189,6 @@ public class StageManager : MonoBehaviour
         PlayerDataManager.Instance.CheckInternetConnection();
 
         int clickedIndex = -1;
-
-        // Find index of clicked button
         for (int i = 0; i < levelButtons.Length; i++)
         {
             if (levelButtons[i] == clickedButton)
@@ -299,212 +198,153 @@ public class StageManager : MonoBehaviour
             }
         }
 
-        if (clickedIndex == -1)
-            yield break; // safety check
+        if (clickedIndex == -1) yield break; 
 
-        // Check if the level is locked
-        LevelInfo levelInfo = playerData.Levels.Find(l => l.LevelID == clickedButton.levelId);
+        LevelInfo levelInfo = PlayerDataManager.Instance.playerData.Levels.Find(l => l.LevelID == clickedButton.levelId);
         bool isLocked = levelInfo != null && levelInfo.LevelLocked == 1;
 
-        //if no internet then active no internet panel. if found internet then just continue
         if (!PlayerDataManager.Instance.isOnline)
         {
             ActiveNoInternetPanel();
-            yield break; // Exit without loading the level
+            yield break; 
         }
 
         if (isLocked)
         {
-            OnLockedLevelClicked(clickedButton.levelId); // call separate function
+            OnLockedLevelClicked(clickedButton.levelId); 
             yield break;
         }
 
-        // ✅ Check if player has enough energy
         int currentEnergy = PlayerDataManager.Instance.GetEnergyCount();
         if (currentEnergy <= 0)
         {
-            Debug.Log("Not enough energy to play this level!");
-            NoEnergyLeftPanel.SetActive(true); // Show no energy panel
-            yield break; // Exit without loading the level
+            NoEnergyLeftPanel.SetActive(true); 
+            yield break; 
+        }
+
+        PlayerDataManager.Instance.RemoveEnergy(1);
+        if (CurrentEnergyText != null)
+        {
+            CurrentEnergyText.text = PlayerDataManager.Instance.GetEnergyCount().ToString();
         }
 
         yield return StartCoroutine(EmojiLoading());
 
-        // Update the energy display
-        CurrentEnergyText.text = PlayerDataManager.Instance.GetEnergyCount().ToString();
-
-        // ✅ Level is unlocked & energy deducted → save and load scene
         selectedLevelIndex = clickedIndex;
         PlayerPrefs.SetInt(SelectedLevelIndexKey, clickedButton.levelId - 1);
         PlayerPrefs.Save();
-
-        Debug.Log($"StageManager: Selected level saved as {clickedButton.levelId - 1}");
 
         SceneManager.LoadScene("MainGame");
     }
 
     void OnLockedLevelClicked(int levelId)
     {
-        // Handle locked level click (e.g., show message)
         Debug.Log($"StageManager: Level {levelId} is locked. Please unlock it first.");
     }
 
-    // 🔥 THIS IS NEW: Grabs the latest local save data and forces the UI to redraw
     public void RefreshLocalUI()
     {
-        string savePath = Path.Combine(Application.persistentDataPath, "playerdata.json");
-        if (File.Exists(savePath))
-        {
-            string encryptedJson = File.ReadAllText(savePath);
-            string decryptedJson = XorEncryptDecrypt(encryptedJson);
-            
-            // Update the StageManager's active data structure
-            playerData = JsonUtility.FromJson<PlayerData>(decryptedJson);
-            
-            // Force the visual text to redraw with the new numbers
-            ShowTotalXPandTotalStars(); 
-        }
-        // else if (PlayerDataManager.Instance != null)
-        // {
-        //      // Fallback if the file isn't written yet
-        //      bombAbilityCount.text = PlayerDataManager.Instance.playerBombCount.ToString();
-        //      colorBombAbilityCount.text = PlayerDataManager.Instance.playerClownCount.ToString();
-        //      extraMoveAbilityCount.text = PlayerDataManager.Instance.playerExtraMoveCount.ToString();
-        //      ShuffleAbilityCount.text = PlayerDataManager.Instance.playerShuffleCount.ToString();
-        //      CurrentEnergyText.text = PlayerDataManager.Instance.GetEnergyCount().ToString();
-        // }
+        ApplyDataToButtons();
+        ShowTotalXPandTotalStars(); 
     }
 
     public void ShowTotalXPandTotalStars()
     {
-        if (playerData == null)
+        if (PlayerDataManager.Instance == null || PlayerDataManager.Instance.playerData == null)
         {
-            Debug.LogError("StageManager: No player data available.");
+            Invoke(nameof(ShowTotalXPandTotalStars), 0.5f);
             return;
         }
+
+        var pData = PlayerDataManager.Instance.playerData;
+
         totalXP = 0;
         totalStars = 0;
-        foreach (LevelInfo level in playerData.Levels)
+        
+        if (pData.Levels != null)
         {
-            totalXP += level.XP;
-            totalStars += level.Stars;
+            foreach (LevelInfo level in pData.Levels)
+            {
+                totalXP += level.XP;
+                totalStars += level.Stars;
+            }
         }
+        
         TotalXP.text = $"{totalXP}";
         TotalStar.text = $"{totalStars}";
-        Name.text = playerData.Name;
-        CurrentEnergyText.text = PlayerDataManager.Instance.GetEnergyCount().ToString();
-        bombAbilityCount.text = playerData.PlayerBombAbilityCount.ToString();
-        colorBombAbilityCount.text = playerData.PlayerColorBombAbilityCount.ToString();
-        extraMoveAbilityCount.text = playerData.PlayerExtraMoveAbilityCount.ToString();
-        ShuffleAbilityCount.text = playerData.PlayerShuffleAbilityCount.ToString();
+        Name.text = pData.Name;
+        CurrentEnergyText.text = pData.EnergyCount.ToString();
+        
+        // This is now guaranteed to match exactly what is in the save file!
+        bombAbilityCount.text = pData.PlayerBombAbilityCount.ToString();
+        colorBombAbilityCount.text = pData.PlayerColorBombAbilityCount.ToString();
+        extraMoveAbilityCount.text = pData.PlayerExtraMoveAbilityCount.ToString();
+        ShuffleAbilityCount.text = pData.PlayerShuffleAbilityCount.ToString();
     }
 
     private void FetchPlayerDataFromPlayFab()
     {
-        if (!PlayerDataManager.Instance.isOnline)
-        {
-            Debug.Log("Offline mode: Cannot fetch from PlayFab. Using local JSON.");
-            LoadPlayerData(); // Fallback to local JSON
-            return;
-        }
-
+        if (!PlayerDataManager.Instance.isOnline) return;
         var request = new GetUserDataRequest();
         PlayFabClientAPI.GetUserData(request, OnPlayFabDataReceived, OnPlayFabError);
     }
 
     private void OnPlayFabDataReceived(GetUserDataResult result)
     {
-        Debug.Log("Player data fetched from PlayFab successfully.");
+        if (PlayerDataManager.Instance == null || PlayerDataManager.Instance.playerData == null) return;
+        var pData = PlayerDataManager.Instance.playerData;
 
-        // Parse the data from PlayFab
         if (result.Data != null)
         {
-            // Initialize playerData if null
-            if (playerData == null)
-                playerData = new PlayerData();
+            if (result.Data.ContainsKey("PlayerName")) pData.Name = result.Data["PlayerName"].Value;
+            if (result.Data.ContainsKey("PlayerID")) pData.PlayerID = result.Data["PlayerID"].Value;
+            if (result.Data.ContainsKey("CurrentLevelId")) pData.CurrentLevelId = int.Parse(result.Data["CurrentLevelId"].Value);
+            if (result.Data.ContainsKey("PlayerEnergyCount")) pData.EnergyCount = int.Parse(result.Data["PlayerEnergyCount"].Value);
 
-            // Get basic info
-            if (result.Data.ContainsKey("PlayerName"))
-                playerData.Name = result.Data["PlayerName"].Value;
+            // First-time players should start with 3 boosters if PlayFab has no saved value yet.
+            pData.PlayerBombAbilityCount = result.Data.ContainsKey("PlayerBombAbilityCount") ? int.Parse(result.Data["PlayerBombAbilityCount"].Value) : 3;
+            pData.PlayerColorBombAbilityCount = result.Data.ContainsKey("PlayerColorBombAbilityCount") ? int.Parse(result.Data["PlayerColorBombAbilityCount"].Value) : 3;
+            pData.PlayerExtraMoveAbilityCount = result.Data.ContainsKey("PlayerExtraMoveAbilityCount") ? int.Parse(result.Data["PlayerExtraMoveAbilityCount"].Value) : 3;
+            pData.PlayerShuffleAbilityCount = result.Data.ContainsKey("PlayerShuffleAbilityCount") ? int.Parse(result.Data["PlayerShuffleAbilityCount"].Value) : 3;
 
-            if (result.Data.ContainsKey("PlayerID"))
-                playerData.PlayerID = result.Data["PlayerID"].Value;
-
-            if (result.Data.ContainsKey("CurrentLevelId"))
-                playerData.CurrentLevelId = int.Parse(result.Data["CurrentLevelId"].Value);
-
-            if (result.Data.ContainsKey("PlayerBombAbilityCount"))
-                playerData.PlayerBombAbilityCount = int.Parse(result.Data["PlayerBombAbilityCount"].Value);
-
-            if (result.Data.ContainsKey("PlayerColorBombAbilityCount"))
-                playerData.PlayerColorBombAbilityCount = int.Parse(result.Data["PlayerColorBombAbilityCount"].Value);
-
-            if (result.Data.ContainsKey("PlayerExtraMoveAbilityCount"))
-                playerData.PlayerExtraMoveAbilityCount = int.Parse(result.Data["PlayerExtraMoveAbilityCount"].Value);
-
-            if (result.Data.ContainsKey("PlayerShuffleAbilityCount"))
-                playerData.PlayerShuffleAbilityCount = int.Parse(result.Data["PlayerShuffleAbilityCount"].Value);
-
-            if (result.Data.ContainsKey("PlayerEnergyCount"))
-                playerData.EnergyCount = int.Parse(result.Data["PlayerEnergyCount"].Value);
-
-            // Parse Levels JSON
             if (result.Data.ContainsKey("Levels"))
             {
                 string levelsJson = result.Data["Levels"].Value;
                 LevelListWrapper wrapper = JsonUtility.FromJson<LevelListWrapper>(levelsJson);
-                playerData.Levels = wrapper.Levels;
+                pData.Levels = wrapper.Levels;
             }
+            
+            PlayerDataManager.Instance.SavePlayerData();
 
-            // Now update UI with fetched data
             ApplyDataToButtons();
             ShowTotalXPandTotalStars();
             CheckAndShowNamePanel();
-        }
-        else
-        {
-            Debug.LogWarning("No data found in PlayFab. Using local JSON as fallback.");
-            LoadPlayerData();
         }
     }
 
     private void OnPlayFabError(PlayFabError error)
     {
         Debug.LogError("Error fetching PlayFab data: " + error.GenerateErrorReport());
-
-        // Fallback to local JSON
-        LoadPlayerData();
         ApplyDataToButtons();
         ShowTotalXPandTotalStars();
     }
 
-    //if PlayerDataManager.isFoundName = false , then show name panel
     public void CheckAndShowNamePanel()
     {
-        Debug.Log("isFoundName: " + PlayerDataManager.Instance.isFoundName);
-
         if (!PlayerDataManager.Instance.isFoundName)
-        {
-            namePanel.SetActive(true); // Show name panel if no name found
-        }
+            namePanel.SetActive(true); 
         else
-        {
-            namePanel.SetActive(false); // Hide if name exists
-        }
+            namePanel.SetActive(false); 
     }
 
     public void RefreashData()
     {
         CheckForInternetConnection();
 
-        // 🔥 Fetch from PlayFab if online
         if (PlayerDataManager.Instance.isOnline)
-        {
             FetchPlayerDataFromPlayFab();
-        }
         else
         {
-            LoadPlayerData();
             ApplyDataToButtons();
             ShowTotalXPandTotalStars();
         }
@@ -515,27 +355,23 @@ public class StageManager : MonoBehaviour
 
     void GetCurrentLevelInt()
     {
-        // Get the current level from PlayerPrefs
         currentLevel = PlayerDataManager.Instance.currentLevel;
     }
 
     public void OnClickAbilityButton()
     {
-        //if bomb or color bomb or extra move ability count is 0 then debug log "No abilities left"
-        if (playerData.PlayerBombAbilityCount <= 0 && playerData.PlayerColorBombAbilityCount <= 0 && playerData.PlayerExtraMoveAbilityCount <= 0)
-        {
-            spinButton.ShowButton(); // Show the spin button
-            return;
-        }
+        if (PlayerDataManager.Instance == null || PlayerDataManager.Instance.playerData == null) return;
+        var pData = PlayerDataManager.Instance.playerData;
+
+        if (pData.PlayerBombAbilityCount <= 0 && pData.PlayerColorBombAbilityCount <= 0 && pData.PlayerExtraMoveAbilityCount <= 0)
+            spinButton.ShowButton(); 
         else
-        {
-            shopUI.SetActive(true); // Show the shop UI
-        }
+            shopUI.SetActive(true); 
     }
 
     public void SendDataToLeaderBoard()
     {
-        PlayerDataManager.Instance.SendLeaderboard(totalXP); // Send the score to the leaderboard
+        PlayerDataManager.Instance.SendLeaderboard(totalXP); 
     }
 
     public void GetDataFromLeaderboard()
@@ -546,23 +382,15 @@ public class StageManager : MonoBehaviour
     public void SetUserName()
     {
         string userName = userNameInput.text.Trim();
-        if (string.IsNullOrEmpty(userName))
-        {
-            Debug.LogWarning("Username cannot be empty.");
-            return;
-        }
+        if (string.IsNullOrEmpty(userName)) return;
 
         PlayerDataManager.Instance.SetName(userName);
         PlayerDataManager.Instance.SavePlayerData();
-        RefreashData();
         UserNameUpdated();
     }
 
-    //public exit function
     public void OnClickExitButton()
     {
-        Debug.Log("Exit button clicked. Quitting application...");
-        //quit application for android and ios
         Application.Quit();
     }
 
@@ -571,202 +399,79 @@ public class StageManager : MonoBehaviour
         UserNameUpdatedPanel.SetActive(true);
     }
 
-    void LoadRewardedAd()
+    // ==========================================
+    // REWARDED ADS SECTION (Via AdsManager)
+    // ==========================================
+    public void ShowRewardedAd_Bomb()
     {
-        // Clean up old instance first
-        if (rewardedAd != null)
+        AdsManager.Instance.ShowRewardedAd(() => 
         {
-            rewardedAd.Destroy();
-            rewardedAd = null;
-        }
-
-        var adRequest = new AdRequest();
-
-        RewardedAd.Load(rewardedAdUnitId, adRequest, (RewardedAd ad, LoadAdError error) =>
-        {
-            if (error != null)
-            {
-                Debug.LogError("Failed to load rewarded ad: " + error);
-                rewardedAd = null;
-                Invoke(nameof(LoadRewardedAd), 5f); // Auto retry
-                return;
-            }
-
-            rewardedAd = ad;
-            Debug.Log("Rewarded ad loaded successfully");
-
-            // Register callbacks
-            rewardedAd.OnAdFullScreenContentClosed += () =>
-            {
-                Debug.Log("Ad closed. Reloading new ad...");
-                LoadRewardedAd(); // Load next ad
-            };
-
-            rewardedAd.OnAdFullScreenContentFailed += (AdError err) =>
-            {
-                Debug.LogError("Ad failed to show: " + err);
-                LoadRewardedAd();
-            };
-
-            rewardedAd.OnAdPaid += (AdValue value) =>
-            {
-                Debug.Log("Rewarded Ad revenue: " + value.Value);
-            };
+            PlayerDataManager.Instance.AddBombAbility(1);
+            PlayerDataManager.Instance.SavePlayerData(); 
+            
+            if (BombGetFromAdsPanel != null) BombGetFromAdsPanel.SetActive(true); 
+            
+            ShowTotalXPandTotalStars();
+            GridManager grid = FindObjectOfType<GridManager>();
+            if (grid != null) grid.RefreshAbilities(); 
         });
     }
 
     public void ShowRewardedAd_Clown()
     {
-
-        if (rewardedAd != null && rewardedAd.CanShowAd())
+        AdsManager.Instance.ShowRewardedAd(() => 
         {
-            rewardedAd.Show((Reward reward) =>
-            {
-                Debug.Log("Reward earned from ad: " + reward.Amount);
-                
-                PlayerDataManager.Instance.AddColorBombAbility(1);
-                PlayerDataManager.Instance.SavePlayerData(); 
+            PlayerDataManager.Instance.AddColorBombAbility(1);
+            PlayerDataManager.Instance.SavePlayerData(); 
 
-                if (playerData != null) playerData.PlayerColorBombAbilityCount += 1;
+            if (ColorBombGetFromAdsPanel != null) ColorBombGetFromAdsPanel.SetActive(true); 
 
-                // 🔥 THE FIX: Check if the panel is assigned before turning it on!
-                if (ColorBombGetFromAdsPanel != null)
-                {
-                    ColorBombGetFromAdsPanel.SetActive(true); 
-                }
-
-                ShowTotalXPandTotalStars(); 
-                
-                GridManager grid = FindObjectOfType<GridManager>();
-                if (grid != null) grid.RefreshAbilities(); 
-            });
-        }
-        else
-        {
-            Debug.LogWarning("Rewarded ad not ready. Reloading...");
-            LoadRewardedAd();
-        }
-    }
-
-    public void ShowRewardedAd_Bomb()
-    {
-        if (rewardedAd != null && rewardedAd.CanShowAd())
-        {
-            rewardedAd.Show((Reward reward) =>
-            {
-                Debug.Log("Reward earned from ad: " + reward.Amount);
-                
-                // 🔥 FIX 1
-                PlayerDataManager.Instance.AddBombAbility(1);
-                PlayerDataManager.Instance.SavePlayerData(); 
-
-                // 🔥 FIX 2
-                if (playerData != null) playerData.PlayerBombAbilityCount += 1;
-
-                // 🔥 THE FIX: Check if the panel is assigned before turning it on!
-                if (BombGetFromAdsPanel != null)
-                {
-                    BombGetFromAdsPanel.SetActive(true); 
-                }
-
-                ShowTotalXPandTotalStars();
-                GridManager grid = FindObjectOfType<GridManager>();
-                if (grid != null) grid.RefreshAbilities(); 
-            });
-        }
-        else
-        {
-            Debug.LogWarning("Rewarded ad not ready. Reloading...");
-            LoadRewardedAd();
-        }
+            ShowTotalXPandTotalStars(); 
+            GridManager grid = FindObjectOfType<GridManager>();
+            if (grid != null) grid.RefreshAbilities(); 
+        });
     }
 
     public void ShowRewardedAd_Moves()
     {
-        if (rewardedAd != null && rewardedAd.CanShowAd())
+        AdsManager.Instance.ShowRewardedAd(() => 
         {
-            rewardedAd.Show((Reward reward) =>
-            {
-                Debug.Log("Reward earned from ad: " + reward.Amount);
-                
-                // 🔥 FIX 1
-                PlayerDataManager.Instance.AddExtraMoveAbility(1);
-                PlayerDataManager.Instance.SavePlayerData();
+            PlayerDataManager.Instance.AddExtraMoveAbility(1);
+            PlayerDataManager.Instance.SavePlayerData();
 
-                // 🔥 FIX 2
-                if (playerData != null) playerData.PlayerExtraMoveAbilityCount += 1;
+            if (ExtraMovesGetFromAdsPanel != null) ExtraMovesGetFromAdsPanel.SetActive(true); 
 
-                // 🔥 THE FIX: Check if the panel is assigned before turning it on!
-                if (ExtraMovesGetFromAdsPanel != null)
-                {
-                    ExtraMovesGetFromAdsPanel.SetActive(true);
-                }
-                ShowTotalXPandTotalStars(); 
-                GridManager grid = FindObjectOfType<GridManager>();
-                if (grid != null) grid.RefreshAbilities();
-            });
-        }
-        else
-        {
-            Debug.LogWarning("Rewarded ad not ready. Reloading...");
-            LoadRewardedAd();
-        }
+            ShowTotalXPandTotalStars(); 
+            GridManager grid = FindObjectOfType<GridManager>();
+            if (grid != null) grid.RefreshAbilities();
+        });
     }
 
     public void ShowRewardedAd_SkipEnergyGenerateTime()
     {
-        if (rewardedAd != null && rewardedAd.CanShowAd())
+        AdsManager.Instance.ShowRewardedAd(() => 
         {
-            rewardedAd.Show((Reward reward) =>
-            {
-                Debug.Log("Reward earned from ad: " + reward.Amount);
-                
-                PlayerDataManager.Instance.SkipEnergyGenerateTime();
-                PlayerDataManager.Instance.SavePlayerData(); // Force a save
+            PlayerDataManager.Instance.SkipEnergyGenerateTime();
+            PlayerDataManager.Instance.SavePlayerData(); 
 
-                // 🔥 THE FIX: Check if the panel is assigned before turning it on!
-                if (NoEnergyLeftPanel != null)
-                {
-                    NoEnergyLeftPanel.SetActive(false);
-                }
-                energyTimerUI.UpdateUI();
-                ShowTotalXPandTotalStars(); 
-            });
-        }
-        else
-        {
-            Debug.LogWarning("Rewarded ad not ready. Reloading...");
-            LoadRewardedAd();
-        }
+            if (NoEnergyLeftPanel != null) NoEnergyLeftPanel.SetActive(false);
+            if (energyTimerUI != null) energyTimerUI.UpdateUI();
+            
+            ShowTotalXPandTotalStars(); 
+        });
     }
+
     public void ShowRewardedAd_Shuffle()
     {
-        CheckForInternetConnection();
-
-        if (rewardedAd != null && rewardedAd.CanShowAd())
+        AdsManager.Instance.ShowRewardedAd(() => 
         {
-            rewardedAd.Show((Reward reward) =>
-            {
-                Debug.Log("Shuffle reward earned from ad!");
-                
-                // Add the ability to your data manager and save
-                PlayerDataManager.Instance.AddShuffleAbility(1); // Make sure this matches your PlayerDataManager method name
-                PlayerDataManager.Instance.SavePlayerData(); 
-
-                if (playerData != null) playerData.PlayerShuffleAbilityCount += 1;
-                
-                ShowTotalXPandTotalStars(); 
-
-                // Tell the GridManager to refresh the numbers on screen
-                GridManager grid = FindObjectOfType<GridManager>();
-                if (grid != null) grid.RefreshAbilities();
-            });
-        }
-        else
-        {
-            Debug.LogWarning("Rewarded ad not ready. Reloading...");
-            LoadRewardedAd();
-        }
+            PlayerDataManager.Instance.AddShuffleAbility(1); 
+            PlayerDataManager.Instance.SavePlayerData(); 
+            
+            ShowTotalXPandTotalStars(); 
+            GridManager grid = FindObjectOfType<GridManager>();
+            if (grid != null) grid.RefreshAbilities();
+        });
     }
 
     public void ActiveNoInternetPanel()
@@ -778,10 +483,7 @@ public class StageManager : MonoBehaviour
     {
         NoInternetConnectionPanel.SetActive(false);
         PlayerDataManager.Instance.CheckInternetConnection();
-
-        //login with guest
         PlayerDataManager.Instance.LoginAsGuest();
-
         CheckForInternetConnection(); 
     }
 }
