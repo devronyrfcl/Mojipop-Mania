@@ -202,19 +202,6 @@ public class Piece : MonoBehaviour
         gridManager.grid[X, Y] = targetPieceObj;
         gridManager.grid[targetPiece.X, targetPiece.Y] = this.gameObject;
 
-        if (this.IsSpecialColorPiece)
-        {
-            targetPiece.ClearColour(targetPiece.pieceType); 
-            this.isMatched = true; 
-            MarkAndDestroyColorPiece(this); 
-        }
-        else if (targetPiece.IsSpecialColorPiece)
-        {
-            this.ClearColour(this.pieceType); 
-            targetPiece.isMatched = true; 
-            MarkAndDestroyColorPiece(targetPiece); 
-        }
-
         int tempX = X;
         int tempY = Y;
         X = targetPiece.X;
@@ -225,6 +212,20 @@ public class Piece : MonoBehaviour
         AudioManager.Instance.PlaySFX("Swing_1");
 
         gridManager.canControl = false; 
+        gridManager.DeductMove();
+
+        if (this.IsSpecialColorPiece)
+        {
+            targetPiece.ClearColour(targetPiece.pieceType);
+            this.isMatched = true;
+            MarkAndDestroyColorPiece(this);
+        }
+        else if (targetPiece.IsSpecialColorPiece)
+        {
+            this.ClearColour(this.pieceType);
+            targetPiece.isMatched = true;
+            MarkAndDestroyColorPiece(targetPiece);
+        }
 
         Invoke(nameof(FindMatches), 0.5f);
         targetPiece.Invoke(nameof(FindMatches), 0.5f);
@@ -428,7 +429,6 @@ public class Piece : MonoBehaviour
 
         if (allMatches.Count >= 3)
         {
-            gridManager.DeductMove();
         }
     }
 
@@ -546,7 +546,6 @@ public class Piece : MonoBehaviour
             gridManager.grid[other.X, other.Y] = otherPiece;
         }
 
-        gridManager.DeductMove();
         gridManager.GameOverLogic();
         gridManager.canControl = true;
     }
