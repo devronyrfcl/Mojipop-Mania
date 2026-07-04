@@ -828,9 +828,9 @@ public class GridManager : MonoBehaviour
     IEnumerator EmojiLoading_2()
     {
         RectTransform emojiRect = EmojisImage.GetComponent<RectTransform>();
-        // Move EmojisImage into view (Y: 2500 to -1250)
+        // Move EmojisImage into view (Y: 2500 to 0)
 
-        yield return emojiRect.DOAnchorPosY(-1250f, 1f).SetEase(Ease.InOutQuad).WaitForCompletion();
+        yield return emojiRect.DOAnchorPosY(0f, 1f).SetEase(Ease.InOutQuad).WaitForCompletion();
 
 
         SceneManager.LoadScene("MainMenu");
