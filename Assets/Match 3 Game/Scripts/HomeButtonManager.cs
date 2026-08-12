@@ -1,14 +1,12 @@
 ﻿using UnityEngine;
 using UnityEngine.Events;
-using UnityEngine.UI;
 using DG.Tweening;
-using UnityEditor;
 
 public class HomeButtonManager : MonoBehaviour
 {
     [Header("References")]
-    public RectTransform buttonRect;   // Main Button RectTransform
-    public RectTransform textRect;     // Text RectTransform
+    public RectTransform buttonRect;
+    public RectTransform textRect;
     public GameObject panel;
 
     public GameObject[] DisbaleObjectArray;
@@ -16,85 +14,219 @@ public class HomeButtonManager : MonoBehaviour
     [Header("Animation Settings")]
     public float moveDuration = 0.5f;
     public float scaleDuration = 0.5f;
-    public float textMoveOffset = -15f; // how much text moves down
+    public float textMoveOffset = -15f;
     public Ease easeType = Ease.OutBack;
 
     [Header("Events")]
     public UnityEvent onShow;
     public UnityEvent onHide;
 
+    [Header("Banner Ad")]
+    [Tooltip("ON = Banner visible when this button/panel is opened")]
+    public bool showBanner = false;
+
     private Vector3 textOriginalPos;
 
-    public HomeButtonManager[] homeButtonManagers; // Array of HomeButtonManager components
+    private HomeButtonManager[] homeButtonManagers;
 
-    void Awake()
+
+    private void Awake()
     {
         if (textRect != null)
+        {
             textOriginalPos = textRect.localPosition;
+        }
     }
+
 
     private void Start()
     {
-        //search for all HomeButtonManager components in the scene
+        // Find all menu buttons.
         homeButtonManagers = FindObjectsOfType<HomeButtonManager>();
-        // Ensure all buttons are initially hidden
-        foreach (var manager in homeButtonManagers)
+
+        // Hide all other buttons/panels.
+        foreach (HomeButtonManager manager in homeButtonManagers)
         {
-            if (manager != this) // Avoid hiding itself
+            if (manager != this)
             {
                 manager.HideButton();
             }
         }
     }
+
 
     public void ShowButton()
     {
-        // Move button Y from -45 → 0
-        buttonRect.DOAnchorPosY(0f, moveDuration).SetEase(Ease.OutQuad);
+        Debug.Log(
+            "[MENU] ShowButton called on: " + gameObject.name +
+            " | Show Banner = " + showBanner
+        );
 
-        // Animate text scale (0 → 1) and move down a little
-        textRect.localScale = Vector3.zero;
-        textRect.DOScale(Vector3.one, scaleDuration).SetEase(easeType);
 
-        textRect.DOLocalMoveY(textOriginalPos.y + textMoveOffset, scaleDuration)
-            .SetEase(Ease.OutQuad);
+        // --------------------------------------------------------
+        // BUTTON ANIMATION
+        // --------------------------------------------------------
+
+        if (buttonRect != null)
+        {
+            buttonRect
+                .DOAnchorPosY(0f, moveDuration)
+                .SetEase(Ease.OutQuad);
+        }
+
+
+        // --------------------------------------------------------
+        // TEXT ANIMATION
+        // --------------------------------------------------------
+
+        if (textRect != null)
+        {
+            textRect.localScale = Vector3.zero;
+
+            textRect
+                .DOScale(Vector3.one, scaleDuration)
+                .SetEase(easeType);
+
+            textRect
+                .DOLocalMoveY(
+                    textOriginalPos.y + textMoveOffset,
+                    scaleDuration
+                )
+                .SetEase(Ease.OutQuad);
+        }
+
+
+        // --------------------------------------------------------
+        // HIDE OTHER BUTTONS
+        // --------------------------------------------------------
+
+        if (homeButtonManagers != null)
+        {
+            foreach (HomeButtonManager manager in homeButtonManagers)
+            {
+                if (manager != this)
+                {
+                    manager.HideButton();
+                }
+            }
+        }
+
+
+        // --------------------------------------------------------
+        // DISABLE OBJECTS
+        // --------------------------------------------------------
+
+        if (DisbaleObjectArray != null)
+        {
+            foreach (GameObject obj in DisbaleObjectArray)
+            {
+                if (obj != null)
+                {
+                    obj.SetActive(false);
+                }
+            }
+        }
+
+
+        // --------------------------------------------------------
+        // SHOW PANEL
+        // --------------------------------------------------------
+
+        if (panel != null)
+        {
+            panel.SetActive(true);
+        }
+
+
+        // --------------------------------------------------------
+        // EVENT
+        // --------------------------------------------------------
 
         onShow?.Invoke();
 
-        // Notify other HomeButtonManagers to hide themselves
-        foreach (var manager in homeButtonManagers)
+
+        // --------------------------------------------------------
+        // BANNER
+        // --------------------------------------------------------
+
+        if (AdsManager.Instance == null)
         {
-            if (manager != this) // Avoid hiding itself
-            {
-                manager.HideButton();
-            }
+            Debug.LogWarning(
+                "[MENU] AdsManager.Instance is NULL!"
+            );
+
+            return;
         }
 
-        //DisbaleObjectArray will be disabled when this button is shown
-        foreach (var obj in DisbaleObjectArray)
-        {
-            if (obj != null)
-            {
-                obj.SetActive(false); // Disable objects when this button is shown
-            }
-        }
 
-        panel.SetActive(true); // Show the panel when this button is shown
+        if (showBanner)
+        {
+            Debug.Log(
+                "[MENU] " + gameObject.name +
+                " -> SHOW BANNER"
+            );
+
+            AdsManager.Instance.ShowBanner();
+        }
+        else
+        {
+            Debug.Log(
+                "[MENU] " + gameObject.name +
+                " -> HIDE BANNER"
+            );
+
+            AdsManager.Instance.HideBanner();
+        }
     }
+
 
     public void HideButton()
     {
-        // Move button Y from 0 → -45
-        buttonRect.DOAnchorPosY(-45f, moveDuration).SetEase(Ease.InQuad);
+        // --------------------------------------------------------
+        // BUTTON ANIMATION
+        // --------------------------------------------------------
 
-        // Animate text scale (1 → 0) and reset position
-        textRect.DOScale(Vector3.zero, scaleDuration).SetEase(Ease.InBack);
+        if (buttonRect != null)
+        {
+            buttonRect
+                .DOAnchorPosY(-45f, moveDuration)
+                .SetEase(Ease.InQuad);
+        }
 
-        textRect.DOLocalMoveY(textOriginalPos.y, scaleDuration)
-            .SetEase(Ease.InQuad);
+
+        // --------------------------------------------------------
+        // TEXT ANIMATION
+        // --------------------------------------------------------
+
+        if (textRect != null)
+        {
+            textRect
+                .DOScale(Vector3.zero, scaleDuration)
+                .SetEase(Ease.InBack);
+
+            textRect
+                .DOLocalMoveY(
+                    textOriginalPos.y,
+                    scaleDuration
+                )
+                .SetEase(Ease.InQuad);
+        }
+
+
+        // --------------------------------------------------------
+        // EVENT
+        // --------------------------------------------------------
 
         onHide?.Invoke();
 
-        panel.SetActive(false); // Hide the panel when this button is hidden
+
+        // --------------------------------------------------------
+        // HIDE PANEL
+        // --------------------------------------------------------
+
+        if (panel != null)
+        {
+            panel.SetActive(false);
+        }
     }
 }
