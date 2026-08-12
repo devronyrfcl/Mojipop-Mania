@@ -23,7 +23,7 @@ MonoBehaviour:
   target2Count: 9
   timeLimit: 120
   isTimedLevel: 0
-  isMovesLevel: 0
+  isMovesLevel: 1
   blockedCells:
   - x: 0
     y: 1

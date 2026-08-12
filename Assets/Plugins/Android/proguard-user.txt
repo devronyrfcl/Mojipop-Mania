@@ -1,0 +1,14 @@
+## ProGuard / R8 rules to keep Google Mobile Ads and UMP classes
+# Prevent stripping of AdMob, mediation adapters, and UMP classes used via reflection.
+-keep class com.google.android.gms.** { *; }
+-keep class com.google.ads.** { *; }
+-keep class com.google.android.ump.** { *; }
+-keep class com.google.android.gms.ads.** { *; }
+-dontwarn com.google.android.gms.**
+-dontwarn com.google.ads.**
+-dontwarn com.google.android.ump.**
+
+# Keep any classes referenced by the adapters (common mediation pattern)
+-keep class * extends java.util.ListResourceBundle {
+    protected Object[][] getContents();
+}
