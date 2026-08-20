@@ -14,20 +14,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   gridWidth: 6
   gridHeight: 8
-  GridSeed: 41
-  SpecialPiecesAmount: 2
-  movesCount: 40
-  target1Piece: 3
-  target2Piece: 4
-  target1Count: 6
-  target2Count: 6
-  timeLimit: 60
-  isTimedLevel: 0
-  isMovesLevel: 1
+  GridSeed: 5
+  SpecialPiecesAmount: 3
+  movesCount: 0
+  target1Piece: 5
+  target2Piece: 7
+  target1Count: 10
+  target2Count: 10
+  timeLimit: 90
+  isTimedLevel: 1
+  isMovesLevel: 0
   blockedCells:
   - x: 2
     y: 3
-  - x: 5
-    y: 5
-  - x: 1
-    y: 5

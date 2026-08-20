@@ -61,10 +61,16 @@ public class EnergyTimerUI : MonoBehaviour
 
     public void SkipEnergyGenerateTime()
     {
-        // Call the method to watch ad and reward energy
-        PlayerDataManager.Instance.SkipEnergyGenerateTime();
-
-
+        AdsManager.Instance.ShowRewardedAd(() =>
+        {
+            PlayerDataManager.Instance.AddEnergy(1);
+            StageManager stage = FindObjectOfType<StageManager>();
+            if (stage != null && stage.NoEnergyLeftPanel != null)
+            {
+                stage.NoEnergyLeftPanel.SetActive(false);
+            }
+            stage?.RefreshLocalUI();
+        });
     }
 
 

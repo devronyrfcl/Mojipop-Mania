@@ -1,4 +1,4 @@
-﻿using DG.Tweening; 
+using DG.Tweening; 
 using System.Collections;
 using System.Collections.Generic; 
 using System.IO;
@@ -49,10 +49,12 @@ public class StageManager : MonoBehaviour
     public GameObject ExitPanel;
 
     private const string SelectedLevelIndexKey = "SelectedLevelIndex";
-    private int selectedLevelIndex = 0; 
+    private int selectedLevelIndex = 0;
+    private bool isStartingLevel = false;
 
     private void OnEnable()
     {
+        isStartingLevel = false;
         RefreshLocalUI();
     }
 
@@ -63,7 +65,9 @@ public class StageManager : MonoBehaviour
         
         LoadPlayerData(); 
 
+        QualitySettings.vSyncCount = 0;
         Application.targetFrameRate = 60;
+        Screen.sleepTimeout = SleepTimeout.NeverSleep;
         namePanel.SetActive(false); 
     }
 
@@ -74,7 +78,7 @@ public class StageManager : MonoBehaviour
 
     private void Update()
     {
-        GetCurrentLevelInt();
+        // Optimized: GetCurrentLevelInt called on data refresh instead of per-frame
 
         if (Input.GetKeyDown(KeyCode.Escape))
         {
@@ -116,13 +120,13 @@ private void ApplyDataToButtons()
 
         var pData = PlayerDataManager.Instance.playerData;
 
-        // 🔥 THE CLOUD REPAIR: If PlayFab gives us a corrupted list, recreate it!
+        // ?? THE CLOUD REPAIR: If PlayFab gives us a corrupted list, recreate it!
         if (pData.Levels == null)
         {
             pData.Levels = new List<LevelInfo>();
         }
 
-        // 🔥 FORCE UNLOCK LEVEL 1: Check if Level 1 exists in the save file
+        // ?? FORCE UNLOCK LEVEL 1: Check if Level 1 exists in the save file
         LevelInfo level1 = pData.Levels.Find(l => l.LevelID == 1);
         if (level1 == null)
         {
@@ -141,34 +145,39 @@ private void ApplyDataToButtons()
         for (int i = 0; i < levelButtons.Length; i++)
         {
             LevelButtonManager btn = levelButtons[i];
+            if (btn == null) continue;
+
             btn.SetLevelId(i + 1); 
-            btn.isCurrentLevel = (i + 1 == currentLevel); 
+            btn.SetCurrentLevel(i + 1 == currentLevel);
             
-            LevelInfo levelInfo = pData.Levels.Find(l => l.LevelID == btn.levelId);
-            if (levelInfo != null)
+            LevelInfo levelInfo = pData.Levels != null ? pData.Levels.Find(l => l.LevelID == btn.levelId) : null;
+            bool isUnlocked = (levelInfo != null && levelInfo.LevelLocked == 0) || (btn.levelId <= currentLevel);
+
+            btn.SetStar(levelInfo != null ? levelInfo.Stars : 0);
+            btn.SetLocked(!isUnlocked);
+
+            Button uiButton = btn.GetComponent<Button>();
+            if (uiButton != null)
             {
-                btn.SetStar(levelInfo.Stars);
-                btn.SetLocked(levelInfo.LevelLocked == 1);
-                btn.GetComponent<Button>().interactable = (levelInfo.LevelLocked == 0);
-            }
-            else
-            {
-                // Any levels not found in the save file default to locked
-                btn.SetStar(0);
-                btn.SetLocked(true);
-                btn.GetComponent<Button>().interactable = false; 
+                uiButton.interactable = isUnlocked;
             }
         }
+
+        FindObjectOfType<DynamicMapScroller>()?.UpdateMapHeight();
         SendDataToLeaderBoard();
     }
 
     IEnumerator EmojiLoading()
     {
         RectTransform emojiRect = EmojisImage.GetComponent<RectTransform>();
-        yield return emojiRect.DOAnchorPosY(-1250f, 1f).SetEase(Ease.InOutQuad).WaitForCompletion();
+        if (emojiRect != null)
+        {
+            emojiRect.anchoredPosition = new Vector2(0f, 3000f);
+            yield return emojiRect.DOAnchorPosY(0f, 0.6f).SetEase(Ease.InOutQuad).WaitForCompletion();
+        }
 
         CheckForInternetConnection(); 
-        yield return new WaitForSeconds(1f);
+        yield return new WaitForSeconds(0.2f);
 
         if (PlayerDataManager.Instance.isOnline == false)
             ActiveNoInternetPanel();
@@ -181,12 +190,20 @@ private void ApplyDataToButtons()
 
     public void SelectLevel(LevelButtonManager clickedButton)
     {
+        if (isStartingLevel) return;
         StartCoroutine(SelectLevelCoroutine(clickedButton));
     }
 
     private IEnumerator SelectLevelCoroutine(LevelButtonManager clickedButton)
     {
-        PlayerDataManager.Instance.CheckInternetConnection();
+        if (isStartingLevel) yield break;
+
+        // Check internet connection
+        if (Application.internetReachability == NetworkReachability.NotReachable)
+        {
+            ActiveNoInternetPanel();
+            yield break;
+        }
 
         int clickedIndex = -1;
         for (int i = 0; i < levelButtons.Length; i++)
@@ -198,29 +215,27 @@ private void ApplyDataToButtons()
             }
         }
 
-        if (clickedIndex == -1) yield break; 
+        if (clickedIndex == -1) yield break;
 
-        LevelInfo levelInfo = PlayerDataManager.Instance.playerData.Levels.Find(l => l.LevelID == clickedButton.levelId);
-        bool isLocked = levelInfo != null && levelInfo.LevelLocked == 1;
-
-        if (!PlayerDataManager.Instance.isOnline)
-        {
-            ActiveNoInternetPanel();
-            yield break; 
-        }
+        LevelInfo levelInfo = PlayerDataManager.Instance.playerData.Levels != null ?
+            PlayerDataManager.Instance.playerData.Levels.Find(l => l.LevelID == clickedButton.levelId) : null;
+        bool isLocked = levelInfo != null ? (levelInfo.LevelLocked == 1) : (clickedButton.levelId > PlayerDataManager.Instance.currentLevel);
 
         if (isLocked)
         {
-            OnLockedLevelClicked(clickedButton.levelId); 
+            OnLockedLevelClicked(clickedButton.levelId);
             yield break;
         }
 
         int currentEnergy = PlayerDataManager.Instance.GetEnergyCount();
         if (currentEnergy <= 0)
         {
-            NoEnergyLeftPanel.SetActive(true); 
-            yield break; 
+            NoEnergyLeftPanel.SetActive(true);
+            yield break;
         }
+
+        // Debounce lock
+        isStartingLevel = true;
 
         PlayerDataManager.Instance.RemoveEnergy(1);
         if (CurrentEnergyText != null)
@@ -228,7 +243,16 @@ private void ApplyDataToButtons()
             CurrentEnergyText.text = PlayerDataManager.Instance.GetEnergyCount().ToString();
         }
 
-        yield return StartCoroutine(EmojiLoading());
+        // Smooth emoji curtain slide down to cover screen
+        RectTransform emojiRect = EmojisImage != null ? EmojisImage.GetComponent<RectTransform>() : null;
+            emojiRect.transform.SetAsLastSibling();
+            emojiRect.gameObject.SetActive(true);
+        if (emojiRect != null)
+        {
+            emojiRect.transform.localScale = Vector3.one;
+            emojiRect.anchoredPosition = new Vector2(0f, 3000f);
+            yield return emojiRect.DOAnchorPosY(0f, 0.6f).SetEase(Ease.InOutQuad).WaitForCompletion();
+        }
 
         selectedLevelIndex = clickedIndex;
         PlayerPrefs.SetInt(SelectedLevelIndexKey, clickedButton.levelId - 1);
@@ -236,7 +260,6 @@ private void ApplyDataToButtons()
 
         SceneManager.LoadScene("MainGame");
     }
-
     void OnLockedLevelClicked(int levelId)
     {
         Debug.Log($"StageManager: Level {levelId} is locked. Please unlock it first.");
@@ -314,6 +337,7 @@ private void ApplyDataToButtons()
                 pData.Levels = wrapper.Levels;
             }
             
+            PlayerDataManager.Instance.GetCurrentLevel();
             PlayerDataManager.Instance.SavePlayerData();
 
             ApplyDataToButtons();
@@ -449,15 +473,18 @@ private void ApplyDataToButtons()
 
     public void ShowRewardedAd_SkipEnergyGenerateTime()
     {
-        AdsManager.Instance.ShowRewardedAd(() => 
+        AdsManager.Instance.ShowRewardedAd(() =>
         {
-            PlayerDataManager.Instance.SkipEnergyGenerateTime();
-            PlayerDataManager.Instance.SavePlayerData(); 
-
-            if (NoEnergyLeftPanel != null) NoEnergyLeftPanel.SetActive(false);
-            if (energyTimerUI != null) energyTimerUI.UpdateUI();
-            
-            ShowTotalXPandTotalStars(); 
+            PlayerDataManager.Instance.AddEnergy(1);
+            if (CurrentEnergyText != null)
+            {
+                CurrentEnergyText.text = PlayerDataManager.Instance.GetEnergyCount().ToString();
+            }
+            if (NoEnergyLeftPanel != null)
+            {
+                NoEnergyLeftPanel.SetActive(false);
+            }
+            RefreshLocalUI();
         });
     }
 

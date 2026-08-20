@@ -26,5 +26,7 @@ public class LevelData : ScriptableObject
     public bool isTimedLevel;
     public bool isMovesLevel;
     public BlockedCell[] blockedCells; //Array of blocked cells in the grid
+    [Range(3, 8)]
+    public int colorCount = 4; // Number of unique piece colors appearing on the board (3 to 6)
 
 }

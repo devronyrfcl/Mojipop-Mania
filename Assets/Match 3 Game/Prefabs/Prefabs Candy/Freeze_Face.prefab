@@ -392,7 +392,7 @@ MonoBehaviour:
   isMatched: 0
   stickToGrid: 1
   ColoumnPiece: {fileID: 4447580820403757667, guid: 4b0aa59de692fb7478f302c29edce511, type: 3}
-  RowPiece: {fileID: 4447580820403757667, guid: 4b0aa59de692fb7478f302c29edce511, type: 3}
+  RowPiece: {fileID: 4447580820403757667, guid: 4f2dfbdcab7d4384fbcc4c54cd6359d8, type: 3}
   BombPiece: {fileID: 7079316263224728815, guid: 2130cca2ee3197a4fbe3b5b31ac4b5c6, type: 3}
   ColorPiece: {fileID: 7079316263224728815, guid: 3eb04ab5e1f3d044e96821fbe4079ec4, type: 3}
   pieceAnimator: {fileID: 5011744615857759325}

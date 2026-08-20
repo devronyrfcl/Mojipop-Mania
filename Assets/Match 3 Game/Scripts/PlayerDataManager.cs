@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Collections.Generic;
 using UnityEngine;
@@ -22,7 +22,7 @@ public class PlayerDataManager : MonoBehaviour
 
     public bool isLaunched = false; 
     public bool isFoundName = false; 
-    public bool isOnline = false; 
+    public bool isOnline = true;
     public bool isNameSame = false; 
 
     public string PlayFabPlayerID; 
@@ -51,6 +51,7 @@ public class PlayerDataManager : MonoBehaviour
     #region "Offline JSON"
     private void Awake()
     {
+        isOnline = Application.internetReachability != NetworkReachability.NotReachable;
         if (Instance == null)
         {
             Instance = this;
@@ -105,7 +106,7 @@ public class PlayerDataManager : MonoBehaviour
         {
             Name = name,
             PlayerID = playerId,
-            // 🔥 FIX: A brand new player now starts with 3 of everything!
+            // ?? FIX: A brand new player now starts with 3 of everything!
             PlayerBombAbilityCount = 3,
             PlayerColorBombAbilityCount = 3,
             PlayerExtraMoveAbilityCount = 3,
@@ -130,6 +131,22 @@ public class PlayerDataManager : MonoBehaviour
     {
         if (playerData != null)
         {
+            if (playerData.Levels != null && playerData.Levels.Count > 0)
+            {
+                int maxUnlocked = 1;
+                foreach (var lvl in playerData.Levels)
+                {
+                    if (lvl != null && lvl.LevelLocked == 0 && lvl.LevelID > maxUnlocked)
+                    {
+                        maxUnlocked = lvl.LevelID;
+                    }
+                }
+                if (playerData.CurrentLevelId < maxUnlocked)
+                {
+                    playerData.CurrentLevelId = maxUnlocked;
+                }
+            }
+
             currentLevel = playerData.CurrentLevelId;
             Debug.Log("Current Level: " + currentLevel);
         }
@@ -169,7 +186,7 @@ public class PlayerDataManager : MonoBehaviour
                         PlayerID = result.Data.ContainsKey("PlayerID") ? result.Data["PlayerID"].Value : Guid.NewGuid().ToString(),
                         CurrentLevelId = result.Data.ContainsKey("CurrentLevelId") ? int.Parse(result.Data["CurrentLevelId"].Value) : 1,
                         
-                        // 🔥 FIX: Fallbacks from PlayFab are now 0 instead of 20!
+                        // ?? FIX: Fallbacks from PlayFab are now 0 instead of 20!
                         PlayerBombAbilityCount = result.Data.ContainsKey("PlayerBombAbilityCount") ? int.Parse(result.Data["PlayerBombAbilityCount"].Value) : 3,
                         PlayerColorBombAbilityCount = result.Data.ContainsKey("PlayerColorBombAbilityCount") ? int.Parse(result.Data["PlayerColorBombAbilityCount"].Value) : 3,
                         PlayerExtraMoveAbilityCount = result.Data.ContainsKey("PlayerExtraMoveAbilityCount") ? int.Parse(result.Data["PlayerExtraMoveAbilityCount"].Value) : 3,
@@ -248,7 +265,7 @@ public class PlayerDataManager : MonoBehaviour
         }
     }
 
-    public void SetCurrentLevel(int levelId) { playerData.CurrentLevelId = levelId; }
+    public void SetCurrentLevel(int levelId) { if (playerData != null) { playerData.CurrentLevelId = levelId; currentLevel = levelId; } }
     
     public void SetName(string newName)
     {
@@ -424,9 +441,9 @@ public class PlayerDataManager : MonoBehaviour
     }
     #endregion
 
-    // 🔥 FIX 1: Set to 15 minutes for testing! 
-    private const int ENERGY_REGEN_MINUTES = 15; 
-    private const int MAX_ENERGY = 5; 
+    // Client requirement: each energy refill takes 1 hour.
+    private const int ENERGY_REGEN_MINUTES = 60;
+    private const int MAX_ENERGY = 5;
 
     public void SetEnergyLevel(int energyCount)
     {
@@ -436,13 +453,22 @@ public class PlayerDataManager : MonoBehaviour
 
     public void AddEnergy(int amount)
     {
+        if (playerData == null) return;
         playerData.EnergyCount = Mathf.Clamp(playerData.EnergyCount + amount, 0, MAX_ENERGY);
+        playerData.LastEnergyUpdateTime = GetCurrentUnixTime();
         SavePlayerData();
+        if (stageManager == null) stageManager = FindObjectOfType<StageManager>();
+        if (stageManager != null && stageManager.CurrentEnergyText != null)
+        {
+            stageManager.CurrentEnergyText.text = playerData.EnergyCount.ToString();
+        }
+        stageManager?.RefreshLocalUI();
+        if (isOnline) SendPlayerDataToPlayFab();
     }
 
     public void RemoveEnergy(int amount)
     {
-        // 🔥 FIX 2: THE CRITICAL BUG! 
+        // ?? FIX 2: THE CRITICAL BUG! 
         // Only start a new timer if our energy was completely full. 
         // If it's already below max, a timer is currently running, so do NOT reset it!
         if (playerData.EnergyCount >= MAX_ENERGY)
@@ -506,7 +532,7 @@ public class PlayerDataManager : MonoBehaviour
     {
         while (true)
         {
-            // 🔥 Check every 1 second instead of 60s so your UI timer ticks down perfectly smoothly
+            // ?? Check every 1 second instead of 60s so your UI timer ticks down perfectly smoothly
             yield return new WaitForSeconds(1f);
 
             if (playerData.EnergyCount >= MAX_ENERGY) 
@@ -520,7 +546,7 @@ public class PlayerDataManager : MonoBehaviour
             long timeDifference = currentTime - playerData.LastEnergyUpdateTime;
             int minutesPassed = (int)(timeDifference / 60);
 
-            // Refill EXACTLY 1 life every 15 minutes!
+            // Refill exactly 1 life every hour.
             if (minutesPassed >= ENERGY_REGEN_MINUTES)
             {
                 int energyToAdd = minutesPassed / ENERGY_REGEN_MINUTES;
@@ -581,16 +607,12 @@ public class PlayerDataManager : MonoBehaviour
 
     public void SkipEnergyGenerateTime()
     {
-        // Skip exactly 15 minutes to instantly reward 1 Vibe when testing ads
-        playerData.LastEnergyUpdateTime -= ENERGY_REGEN_MINUTES * 60;
-        SavePlayerData();
+        AddEnergy(1);
     }
 
     public void CheckInternetConnection()
     {
-        PlayFabClientAPI.GetTitleData(new GetTitleDataRequest(), 
-            result => { isOnline = true; }, 
-            error => { isOnline = false; });
+        isOnline = Application.internetReachability != NetworkReachability.NotReachable;
     }
 
     public int GetPlayerBombAbilityCount() { return playerData.PlayerBombAbilityCount; }

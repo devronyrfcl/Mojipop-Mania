@@ -1,4 +1,4 @@
-﻿using DG.Tweening;
+using DG.Tweening;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -7,7 +7,7 @@ using System.Collections;
 public class LevelButtonManager : MonoBehaviour
 {
     [Header("Level Data")]
-    public int starCount; // 0–3
+    public int starCount; // 0-3
     public int levelId; // Example: 1, 2, 3...
     public bool isLocked;
     public bool isCurrentLevel;
@@ -30,19 +30,10 @@ public class LevelButtonManager : MonoBehaviour
 
     public void SetInteractable(bool value)
     {
-        /*if (button != null)
-            button.interactable = value;*/
-        this.GetComponent<Button>().interactable = value;
-        buttonImage.color = value ? Color.white : Color.gray; // Change color based on interactability
-        /*if (currentLevelGlow != null)
-        {
-            currentLevelGlow.SetActive(value && isCurrentLevel);
-        }
-        if (levelIdText != null)
-        {
-            levelIdText.color = value ? Color.white : Color.gray; // Change text color based on interactability
-        }*/
-
+        Button btn = GetComponent<Button>();
+        if (btn != null) btn.interactable = value;
+        if (buttonImage == null) buttonImage = GetComponent<Image>();
+        if (buttonImage != null) buttonImage.color = value ? Color.white : Color.gray;
     }
 
     private void Awake()
@@ -50,18 +41,20 @@ public class LevelButtonManager : MonoBehaviour
         buttonImage = GetComponent<Image>();
     }
 
-    private void Update()
+    private void Start()
     {
         UpdateButtonState();
         UpdateStarDisplay();
         UpdateLevelIdText();
     }
 
-    
-
     public void UpdateButtonState()
     {
-        buttonImage.sprite = isLocked ? lockedSprite : unlockedSprite;
+        if (buttonImage == null) buttonImage = GetComponent<Image>();
+        if (buttonImage != null)
+        {
+            buttonImage.sprite = isLocked ? lockedSprite : unlockedSprite;
+        }
 
         if (currentLevelGlow != null)
         {
@@ -71,33 +64,51 @@ public class LevelButtonManager : MonoBehaviour
 
     public void UpdateStarDisplay()
     {
-        // Case 1: Locked → No stars
+        // Case 1: Locked - No stars
         if (isLocked && !isCurrentLevel)
         {
-            for (int i = 0; i < 3; i++)
+            if (normalStars != null)
             {
-                normalStars[i].SetActive(false);
-                glowStars[i].SetActive(false);
-                lockIcon.SetActive(true);
+                for (int i = 0; i < normalStars.Length; i++)
+                {
+                    if (normalStars[i] != null) normalStars[i].SetActive(false);
+                }
             }
+            if (glowStars != null)
+            {
+                for (int i = 0; i < glowStars.Length; i++)
+                {
+                    if (glowStars[i] != null) glowStars[i].SetActive(false);
+                }
+            }
+            if (lockIcon != null) lockIcon.SetActive(true);
             return;
         }
 
-        // Case 2: CurrentLevel or Unlocked → Show stars
-        for (int i = 0; i < 3; i++)
+        // Case 2: CurrentLevel or Unlocked - Show stars
+        if (normalStars != null)
         {
-            normalStars[i].SetActive(true);
-            glowStars[i].SetActive(false);
-            lockIcon.SetActive(false);
+            for (int i = 0; i < normalStars.Length; i++)
+            {
+                if (normalStars[i] != null) normalStars[i].SetActive(true);
+            }
         }
+        if (glowStars != null)
+        {
+            for (int i = 0; i < glowStars.Length; i++)
+            {
+                if (glowStars[i] != null) glowStars[i].SetActive(false);
+            }
+        }
+        if (lockIcon != null) lockIcon.SetActive(false);
 
         // Show earned stars (glow effect)
-        for (int i = 0; i < starCount; i++)
+        if (glowStars != null && normalStars != null)
         {
-            if (i < 3)
+            for (int i = 0; i < starCount && i < glowStars.Length && i < normalStars.Length; i++)
             {
-                normalStars[i].SetActive(false);
-                glowStars[i].SetActive(true);
+                if (normalStars[i] != null) normalStars[i].SetActive(false);
+                if (glowStars[i] != null) glowStars[i].SetActive(true);
             }
         }
     }
@@ -115,30 +126,32 @@ public class LevelButtonManager : MonoBehaviour
         starCount = Mathf.Clamp(stars, 0, 3); // Ensure star count is between 0 and 3
         UpdateStarDisplay();
     }
+
     public void SetLevelId(int id)
     {
         levelId = id;
         UpdateLevelIdText();
     }
+
     public void SetLocked(bool locked)
     {
         isLocked = locked;
         UpdateButtonState();
+        UpdateStarDisplay();
     }
+
     public void SetCurrentLevel(bool current)
     {
         isCurrentLevel = current;
         UpdateButtonState();
+        UpdateStarDisplay();
     }
 
     public void OnLevelButtonPressed()
     {
         if (stageManager != null)
         {
-            
             stageManager.SelectLevel(this); // just pass the clicked button
         }
     }
-
-
 }
