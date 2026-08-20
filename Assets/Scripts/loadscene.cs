@@ -1,4 +1,4 @@
-﻿using DG.Tweening; // Make sure you have DOTween installed
+using DG.Tweening; // Make sure you have DOTween installed
 using System.Collections;
 using TMPro; // For TMP_InputField
 using UnityEngine;
@@ -96,21 +96,18 @@ public class loadscene : MonoBehaviour
     IEnumerator SecondLoading()
     {
         RectTransform emojiRect = EmojisImage.GetComponent<RectTransform>();
-
-        // ✅ Move EmojisImage into view (Y: 2150 → -1777)
-        yield return emojiRect.DOAnchorPosY(-1250f, 1f).SetEase(Ease.InOutQuad).WaitForCompletion();
-
-        // ✅ Wait 1 second
-        yield return new WaitForSeconds(1f);
-
-        // ✅ Deactivate loading object during this time
+        if (emojiRect != null)
+        {
+            emojiRect.anchoredPosition = new Vector2(0f, 3000f);
+            yield return emojiRect.DOAnchorPosY(0f, 0.6f).SetEase(Ease.InOutQuad).WaitForCompletion();
+        }
+        yield return new WaitForSeconds(0.3f);
         LoadingObject.SetActive(false);
-
-        // ✅ Move EmojisImage back up (Y: -1777 → 2150)
-        yield return emojiRect.DOAnchorPosY(2150f, 1f).SetEase(Ease.InOutQuad).WaitForCompletion();
-
+        if (emojiRect != null)
+        {
+            yield return emojiRect.DOAnchorPosY(-3000f, 0.6f).SetEase(Ease.InOutQuad).WaitForCompletion();
+        }
         stageManager.ShowTotalXPandTotalStars();
-
         stageManager.RefreashData();
     }
 
@@ -132,16 +129,12 @@ public class loadscene : MonoBehaviour
 
     IEnumerator EmojiLoading()
     {
-        //EmojisImage_2.SetActive(true); // Show EmojisImage_2
-        
         RectTransform emojiRect = EmojisImage.GetComponent<RectTransform>();
-        //set emojiRect position to Y -1777
-        emojiRect.anchoredPosition = new Vector2(emojiRect.anchoredPosition.x, -1777f);
-
-        // ✅ Move EmojisImage into view (Y: -1777 → 2150)
-        yield return emojiRect.DOAnchorPosY(2150f, 1f).SetEase(Ease.InOutQuad).WaitForCompletion();
-
-
+        if (emojiRect != null)
+        {
+            emojiRect.anchoredPosition = new Vector2(0f, 0f);
+            yield return emojiRect.DOAnchorPosY(-3000f, 0.6f).SetEase(Ease.InOutQuad).WaitForCompletion();
+        }
     }
 
 }

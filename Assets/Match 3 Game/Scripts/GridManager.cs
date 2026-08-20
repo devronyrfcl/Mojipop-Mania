@@ -1,4 +1,4 @@
-﻿using DG.Tweening;
+using DG.Tweening;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -42,9 +42,19 @@ public class GridManager : MonoBehaviour
     public bool isPlacingColor = false;
     public bool canControl = true;
     public bool isGameOver = false;
+    private bool isGameOverTriggered = false;
 
     private bool isRefilling = false; // Track if grid is currently refilling
+    private bool needsAnotherRefill = false;
     private bool hasPendingMatches = false; // Track if matches were found during refill
+    private float controlUnlockTimer = 0f;
+    public int lastSwapX = -1;
+    public int lastSwapY = -1;
+    public int lastSwapX1 = -1;
+    public int lastSwapY1 = -1;
+    public int lastSwapX2 = -1;
+    public int lastSwapY2 = -1;
+    private bool specialSpawnClaimed;
 
 
 
@@ -166,15 +176,20 @@ public class GridManager : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+        QualitySettings.vSyncCount = 0;
         Application.targetFrameRate = 60;
+        Screen.sleepTimeout = SleepTimeout.NeverSleep;
 
         grid = new GameObject[levelData.gridWidth, levelData.gridHeight];
+        pieces = new Piece[levelData.gridWidth * levelData.gridHeight];
         //SavePath = Path.Combine(Application.persistentDataPath, "playerdata.json");
 
         LoadLevel();
 
         //AudioManager.Instance.PlayMusic("MenuBG");
         GameOverPanel.transform.localScale = Vector3.zero; // Start from scale 0
+        isGameOverTriggered = false;
+        isGameOver = false;
 
         SpawnGridBackgroundBlock(); // Call the method to spawn background blocks
         //CreateGrid(); // Call the method to create the grid and place pieces
@@ -269,7 +284,7 @@ public class GridManager : MonoBehaviour
         return new string(result);
     }
 
-    private void UpdateUI()
+    public void UpdateUI()
     {
         movesCountText.text = currentMoves.ToString();
 
@@ -291,64 +306,41 @@ public class GridManager : MonoBehaviour
 
     private void Update()
     {
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            if (SettingsPanel != null) SettingsPanel.SetActive(true);
+        }
+
+        // Safety Watchdog: If board is not refilling and game is active, ensure control is never frozen
+        if (!isRefilling && !canControl && !isGameOver && (GameOverPanel == null || !GameOverPanel.activeSelf))
+        {
+            controlUnlockTimer += Time.deltaTime;
+            if (controlUnlockTimer > 1.2f)
+            {
+                canControl = true;
+                controlUnlockTimer = 0f;
+            }
+        }
+        else
+        {
+            controlUnlockTimer = 0f;
+        }
+
         if (!isTimerRunning)
         {
             return;
         }
 
         currentTime -= Time.deltaTime;
+        UpdateUI();
 
         if (currentTime <= 0)
         {
             currentTime = 0;
             isTimerRunning = false;
-            isTimeExpired = true;
-            hasMadeFinalSwipeAfterTimeExpired = false;
-            OnTimeUp();
+            GameOverLogic();
         }
-
-
-        //if press back button on android, then exit to main menu
-        if (Input.GetKeyDown(KeyCode.Escape))
-        {
-            SettingsPanel.SetActive(true);
-        }
-
-
-        //GameOverLogic();
-
-
-        /*if(isGameOver)
-        {
-            GameOverHelper();
-        }*/
-
-        //if i click on any bomb then call bomb on that piece. use mouse position raycast to get the piece
-        /*if (Input.GetMouseButtonDown(0) && canControl)
-        {
-            Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            RaycastHit2D hit = Physics2D.Raycast(mousePos, Vector2.zero);
-            if (hit.collider != null)
-            {
-                Piece piece = hit.collider.GetComponent<Piece>();
-                if (piece != null)
-                {
-                    if (isPlacingBomb && Ability_bombCurrentAmount > 0)
-                    {
-                        piece.ActivateBomb();
-                        DeductAbility_Bomb(1);
-                        isPlacingBomb = false;
-                    }
-                    
-                }
-            }
-        }*/
-
-
-
     }
-
-
     public void GoToNextLevel()
     {
         // Unlock the next level
@@ -407,44 +399,22 @@ public class GridManager : MonoBehaviour
 
     public void GameOverLogic()
     {
-        if (isTimeExpired && !hasMadeFinalSwipeAfterTimeExpired)
+        if (isGameOverTriggered)
         {
             return;
         }
 
+        bool targetsMet = currentTarget1Count <= 0 && currentTarget2Count <= 0;
+        bool outOfMovesOrTime = (currentTime <= 0 || currentMoves <= 0);
 
-
-        //optimised version of above code   
-        if ((currentTime <= 0 || currentMoves <= 0) && (currentTarget1Count > 0 || currentTarget2Count > 0))
+        if (targetsMet || outOfMovesOrTime)
         {
-            // Game over condition: Time or moves are up, but targets are not met
+            isGameOverTriggered = true;
             isGameOver = true;
-            Debug.Log("Game Over! Time is up or no moves left.");
-        }
-        else if (currentTarget1Count <= 0 && currentTarget2Count <= 0)
-        {
-            // Level completed condition: All targets met
-            Debug.Log("Level Completed!");
-            isGameOver = true;
-        }
-
-        if (isGameOver)
-        {
-            GameOverHelper();
-            StartCoroutine(TurnOfisGameOver());
-
+            canControl = false;
+            StartCoroutine(GameOver());
         }
     }
-
-    //wait for few sec befor isGameOver = false
-    private IEnumerator TurnOfisGameOver()
-    {
-        //wait for 1 sec
-        yield return new WaitForSeconds(0.2f);
-        isGameOver = false;
-    }
-    // 🔥 THE FIX: Grabs the newest items from the save data and redraws the UI
-    // 🔥 THE FIX: Grabs the newest items from the save data and redraws the UI after an Ad
     public void RefreshAbilities()
     {
         Ability_bombCurrentAmount = PlayerDataManager.Instance.GetPlayerBombAbilityCount();
@@ -466,22 +436,6 @@ public class GridManager : MonoBehaviour
     private void FixedUpdate()
     {
         UpdateTimeText();
-
-
-
-        //pieces objects will be the spawned pieces in the game
-        pieces = new Piece[levelData.gridWidth * levelData.gridHeight];
-        for (int x = 0; x < levelData.gridWidth; x++)
-        {
-            for (int y = 0; y < levelData.gridHeight; y++)
-            {
-                if (grid[x, y] != null)
-                {
-                    Piece pieceScript = grid[x, y].GetComponent<Piece>();
-                    pieces[x + y * levelData.gridWidth] = pieceScript; // Store the piece in the pieces array
-                }
-            }
-        }
     }
 
 
@@ -507,7 +461,10 @@ public class GridManager : MonoBehaviour
         // Assign the selected LevelData
         levelData = levelDatas[currentLevelIndex];
 
-        // Recreate the grid with the new LevelData
+        // The selected level can have different dimensions from the inspector's
+        // default LevelData, so allocate after selection rather than reusing it.
+        grid = new GameObject[levelData.gridWidth, levelData.gridHeight];
+        pieces = new Piece[levelData.gridWidth * levelData.gridHeight];
         CreateGrid();
 
 
@@ -595,179 +552,130 @@ public class GridManager : MonoBehaviour
 
     IEnumerator GameOver()
     {
-
-
-        //if isGameOver is already true, then skip
-        if (!isGameOver)
-        {
-            yield break;
-        }
-
-
-
-        //wait for 1 second
-        yield return new WaitForSeconds(1f);
+        yield return new WaitForSeconds(0.8f);
 
         bool levelCompleted = currentTarget1Count <= 0 && currentTarget2Count <= 0;
 
         if (levelCompleted)
         {
-            gameOverTitleText.text = "Congratulations!";
-            Shine1.SetActive(true);
-            Shine2.SetActive(false);
-            AudioManager.Instance.PlaySFX("GameWin");
-            NextLevelButton.gameObject.SetActive(true);
-            WinMainMenuButton.SetActive(true);
-            isGameOver = true;
+            if (gameOverTitleText != null) gameOverTitleText.text = "Congratulations!";
+            if (Shine1 != null) Shine1.SetActive(true);
+            if (Shine2 != null) Shine2.SetActive(false);
+            AudioManager.Instance?.PlaySFX("GameWin");
+            if (NextLevelButton != null) NextLevelButton.gameObject.SetActive(true);
+            if (WinMainMenuButton != null) WinMainMenuButton.SetActive(true);
+            if (RestartButton != null) RestartButton.gameObject.SetActive(false);
+            if (LoseMainMenuButton != null) LoseMainMenuButton.SetActive(false);
+
+            Invoke("CalculateStarAndShow", 0.5f);
         }
         else
         {
-            gameOverTitleText.text = "Game Over!";
-            Shine1.SetActive(false);
-            Shine2.SetActive(true);
-            AudioManager.Instance.PlaySFX("GameLose");
-            RestartButton.gameObject.SetActive(true);
-            LoseMainMenuButton.SetActive(true);
-            isGameOver = true;
+            if (gameOverTitleText != null) gameOverTitleText.text = "Game Over!";
+            if (Shine1 != null) Shine1.SetActive(false);
+            if (Shine2 != null) Shine2.SetActive(true);
+            AudioManager.Instance?.PlaySFX("GameLose");
+            if (RestartButton != null) RestartButton.gameObject.SetActive(true);
+            if (LoseMainMenuButton != null) LoseMainMenuButton.SetActive(true);
+            if (NextLevelButton != null) NextLevelButton.gameObject.SetActive(false);
+            if (WinMainMenuButton != null) WinMainMenuButton.SetActive(false);
+
+            // On Game Over: Reset stars to 0 and XP to 0
+            stars = 0;
+            XP = 0;
+
+            for (int i = 0; i < 3; i++)
+            {
+                if (glowStars != null && i < glowStars.Length && glowStars[i] != null)
+                    glowStars[i].SetActive(false);
+                if (normalStars != null && i < normalStars.Length && normalStars[i] != null)
+                    normalStars[i].SetActive(true);
+            }
+
+            if (xpAmount != null)
+                xpAmount.text = "0";
         }
 
-        //gameOverText will be = level + currentLevelIndex + 1
-        gameOverText.text = "Level :" + (currentLevelIndex + 1);
-        level_Count.text = (currentLevelIndex + 1).ToString(); // Update level count text
-                                                               //gameOverTitleText will be = Contratulations if currentTarget1Count and currentTarget2Count are 0
+        if (gameOverText != null) gameOverText.text = "Level :" + (currentLevelIndex + 1);
+        if (level_Count != null) level_Count.text = (currentLevelIndex + 1).ToString();
 
-        // Handle game over logic here
-        // For example, show a game over screen or reset the game
-        Debug.Log("Game Over! You can implement your game over logic here.");
-        isTimerRunning = false; // Stop the timer
-        canControl = false; // Disable player controls
-        //game over panel will be shown using do tweening
-        GameOverPanel.SetActive(true);
-        
-        GameOverPanel.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.OutBack); // Scale to normal size
-        // Optionally, you can also reset the game state or show options to restart or exit
-        // Reset the grid and pieces
-        if (levelCompleted)
+        isTimerRunning = false;
+        canControl = false;
+
+        if (GameOverPanel != null)
         {
-            //delay CalculateStarAndShow() for 0.5 seconds
-            Invoke("CalculateStarAndShow", 0.5f);
+            GameOverPanel.SetActive(true);
+            GameOverPanel.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.OutBack);
         }
-
-
 
         SaveNewAbilityCounts(Ability_bombCurrentAmount, Ability_colorBombCurrentAmount, Ability_extraMovesCurrentAmount, Ability_shuffleCurrentAmount);
-
     }
-
     public void CalculateStarAndShow()
     {
-        //if  level datas Target1Count and Target2Count are 0, then no stars and no XP
-        if (levelData.target1Count == 0 && levelData.target2Count == 0)
+        if (currentTarget1Count > 0 || currentTarget2Count > 0)
         {
-            stars = 0; // No stars
-            XP = 0; // No XP
-            Debug.Log("No stars and no XP because targets are 0.");
+            stars = 0;
+            XP = 0;
+            Debug.Log("Targets not met - 0 stars.");
+            return;
         }
-        // Calculate stars based on moves and time left. more moves and move time left, more stars
 
-        else if (currentMoves > 0 && currentTime > 0)
+        if (levelData.isTimedLevel)
         {
-            if (currentMoves >= levelData.movesCount * 0.25f && currentTime >= levelData.timeLimit * 0.25f)
+            float ratio = levelData.timeLimit > 0 ? (currentTime / (float)levelData.timeLimit) : 0f;
+            if (ratio >= 0.5f)
             {
-                stars = 3; // Full stars
-                Debug.Log("3 stars and 100XP earned!");
-
-                //calculate XP based on moves left multiplied by left times
-                //XP = Mathf.FloorToInt((currentMoves / (float)levelData.movesCount) * 100) + Mathf.FloorToInt((currentTime / (float)levelData.timeLimit) * 100);
-                //if levelData.isTimedLevel is true then XP will be left time x 10
-                XP = Mathf.FloorToInt((currentTime / (float)levelData.timeLimit) * 10);
-                if (levelData.isTimedLevel)
-                {
-                    XP = 20;//Mathf.FloorToInt((currentTime / (float)levelData.timeLimit) * 10);
-
-                }
-                else if (levelData.isMovesLevel)
-                {
-                    XP = 20;//Mathf.FloorToInt((currentMoves / (float)levelData.timeLimit) * 10);
-                }
-                else
-                {
-                    Debug.Log("error getting XP data for levelData bools");
-                }
-
+                stars = 3;
+                XP = 20;
             }
-            else if (currentMoves >= levelData.movesCount * 0.2f && currentTime >= levelData.timeLimit * 0.2f)
+            else if (ratio >= 0.25f)
             {
-                stars = 2; // Two stars
-                Debug.Log("2 stars and 50 XP earned!");
-                //XP = Mathf.FloorToInt((currentMoves / (float)levelData.movesCount) * 100) + Mathf.FloorToInt((currentTime / (float)levelData.timeLimit) * 100);
-                if (levelData.isTimedLevel)
-                {
-                    XP = 10;//Mathf.FloorToInt((currentTime / (float)levelData.timeLimit) * 5);
-
-                }
-                else if (levelData.isMovesLevel)
-                {
-                    XP = 10;//Mathf.FloorToInt((currentMoves / (float)levelData.timeLimit) * 5);
-                }
-                else
-                {
-                    Debug.Log("error getting XP data for levelData bools");
-                }
-
+                stars = 2;
+                XP = 10;
             }
             else
             {
-                stars = 1; // One star
-                Debug.Log("1 star and 20 XP earned!");
-                //XP = Mathf.FloorToInt((currentMoves / (float)levelData.movesCount) * 100) + Mathf.FloorToInt((currentTime / (float)levelData.timeLimit) * 100);
-                if (levelData.isTimedLevel)
-                {
-                    XP = 5;//Mathf.FloorToInt((currentTime / (float)levelData.timeLimit) * 2);
-
-                }
-                else if (levelData.isMovesLevel)
-                {
-                    XP = 5;//Mathf.FloorToInt((currentMoves / (float)levelData.timeLimit) * 2);
-                }
-                else
-                {
-                    Debug.Log("error getting XP data for levelData bools");
-                }
-
+                stars = 1;
+                XP = 5;
+            }
+        }
+        else // Moves level or default
+        {
+            float ratio = levelData.movesCount > 0 ? (currentMoves / (float)levelData.movesCount) : 0f;
+            if (ratio >= 0.5f)
+            {
+                stars = 3;
+                XP = 20;
+            }
+            else if (ratio >= 0.25f)
+            {
+                stars = 2;
+                XP = 10;
+            }
+            else
+            {
+                stars = 1;
+                XP = 5;
             }
         }
 
-
-
-
-        // Show the stars UI. By default, all Glowing stars are hidden and normal stars are shown
+        // Show the stars UI
         for (int i = 0; i < 3; i++)
         {
-            if (i < stars)
-            {
-                glowStars[i].SetActive(true); // Show glowing stars
-                normalStars[i].SetActive(false); // Hide normal stars
-            }
-            else
-            {
-                glowStars[i].SetActive(false); // Hide glowing stars
-                normalStars[i].SetActive(true); // Show normal stars
-                Debug.Log("No stars earned for star index: " + i);
-            }
+            if (glowStars != null && i < glowStars.Length && glowStars[i] != null)
+                glowStars[i].SetActive(i < stars);
+            if (normalStars != null && i < normalStars.Length && normalStars[i] != null)
+                normalStars[i].SetActive(i >= stars);
         }
 
         // Update XP UI
-        xpAmount.text = XP.ToString();
-        Debug.Log("Stars: " + stars + ", XP: " + XP);
+        if (xpAmount != null)
+            xpAmount.text = XP.ToString();
+        Debug.Log("Level Complete! Stars: " + stars + ", XP: " + XP);
 
-        //send star and xp data to PlayerDataManager
+        // Send star and xp data to PlayerDataManager
         SendStarXpDataToPlayerDataManager(currentLevelIndex + 1, 0, stars, XP);
-
-        //PlayerDataManager.Instance.SendLeaderboardScore(stars, XP); // Send the score to the leaderboard
-
     }
-
     void SendStarXpDataToPlayerDataManager(int levelId, int lockedValue, int stars, int xp)
     {
 
@@ -815,24 +723,31 @@ public class GridManager : MonoBehaviour
 
     IEnumerator EmojiLoading()
     {
-        RectTransform emojiRect = EmojisImage.GetComponent<RectTransform>();
-        //AudioManager.Instance.PlaySFX("GameStart");
-        canControl = false; // Disable player controls during loading
-        // Move EmojisImage into view (Y: -1250 to 2500)
-        yield return emojiRect.DOAnchorPosY(2500f, 1f).SetEase(Ease.InOutQuad).WaitForCompletion();
-        canControl = true; // Re-enable player controls after loading
-
-
+        RectTransform emojiRect = EmojisImage != null ? EmojisImage.GetComponent<RectTransform>() : null;
+        canControl = false;
+        if (emojiRect != null)
+        {
+            emojiRect.transform.SetAsLastSibling();
+            emojiRect.gameObject.SetActive(true);
+            emojiRect.transform.localScale = Vector3.one;
+            emojiRect.anchoredPosition = new Vector2(0f, 0f);
+            yield return emojiRect.DOAnchorPosY(-3000f, 0.7f).SetEase(Ease.InOutQuad).WaitForCompletion();
+            emojiRect.gameObject.SetActive(false);
+        }
+        canControl = true;
     }
 
     IEnumerator EmojiLoading_2()
     {
-        RectTransform emojiRect = EmojisImage.GetComponent<RectTransform>();
-        // Move EmojisImage into view (Y: 2500 to 0)
-
-        yield return emojiRect.DOAnchorPosY(0f, 1f).SetEase(Ease.InOutQuad).WaitForCompletion();
-
-
+        RectTransform emojiRect = EmojisImage != null ? EmojisImage.GetComponent<RectTransform>() : null;
+        if (emojiRect != null)
+        {
+            emojiRect.transform.SetAsLastSibling();
+            emojiRect.gameObject.SetActive(true);
+            emojiRect.transform.localScale = Vector3.one;
+            emojiRect.anchoredPosition = new Vector2(0f, 3000f);
+            yield return emojiRect.DOAnchorPosY(0f, 0.6f).SetEase(Ease.InOutQuad).WaitForCompletion();
+        }
         SceneManager.LoadScene("MainMenu");
     }
 
@@ -858,10 +773,103 @@ public class GridManager : MonoBehaviour
 
 
     //the grid and place pieces using seed from LevelData
+    private List<GameObject> cachedActivePool;
+
+    public void ResetActivePiecePool()
+    {
+        cachedActivePool = null;
+    }
+
+    private List<GameObject> GetActivePiecePool()
+    {
+        if (cachedActivePool != null && cachedActivePool.Count > 0)
+            return cachedActivePool;
+
+        cachedActivePool = new List<GameObject>();
+        if (piecePrefabs == null || piecePrefabs.Length == 0)
+            return cachedActivePool;
+
+        // 1. Always prioritize target pieces so the level goals can be solved
+        GameObject target1Prefab = null;
+        GameObject target2Prefab = null;
+
+        foreach (GameObject prefab in piecePrefabs)
+        {
+            if (prefab == null) continue;
+            Piece p = prefab.GetComponent<Piece>();
+            if (p == null) continue;
+
+            if (levelData != null && p.pieceType == levelData.target1Piece && target1Prefab == null)
+                target1Prefab = prefab;
+            if (levelData != null && p.pieceType == levelData.target2Piece && target2Prefab == null)
+                target2Prefab = prefab;
+        }
+
+        if (target1Prefab != null) cachedActivePool.Add(target1Prefab);
+        if (target2Prefab != null && target2Prefab != target1Prefab) cachedActivePool.Add(target2Prefab);
+
+        // 2. Add other piece types up to a friendly pool of 4-5 colors per level
+        int maxColorsPerLevel = (levelData != null && levelData.colorCount >= 3) ? levelData.colorCount : 4;
+        foreach (GameObject prefab in piecePrefabs)
+        {
+            if (prefab == null || cachedActivePool.Contains(prefab)) continue;
+
+            if (cachedActivePool.Count < maxColorsPerLevel)
+            {
+                cachedActivePool.Add(prefab);
+            }
+        }
+
+        if (cachedActivePool.Count == 0)
+        {
+            cachedActivePool.AddRange(piecePrefabs);
+        }
+
+        return cachedActivePool;
+    }
+
+    private GameObject GetRandomPiecePrefab(int gridX = -1, int gridY = -1)
+    {
+        List<GameObject> pool = GetActivePiecePool();
+        if (pool == null || pool.Count == 0)
+            return piecePrefabs[Random.Range(0, piecePrefabs.Length)];
+
+        // When generating the initial board, prevent creating 3-in-a-row right away
+        if (gridX >= 0 && gridY >= 0)
+        {
+            List<GameObject> validChoices = new List<GameObject>(pool);
+            for (int i = validChoices.Count - 1; i >= 0; i--)
+            {
+                Piece p = validChoices[i].GetComponent<Piece>();
+                if (p == null) continue;
+
+                bool leftMatch = gridX >= 2 &&
+                    grid[gridX - 1, gridY] != null && grid[gridX - 2, gridY] != null &&
+                    grid[gridX - 1, gridY].GetComponent<Piece>()?.pieceType == p.pieceType &&
+                    grid[gridX - 2, gridY].GetComponent<Piece>()?.pieceType == p.pieceType;
+
+                bool bottomMatch = gridY >= 2 &&
+                    grid[gridX, gridY - 1] != null && grid[gridX, gridY - 2] != null &&
+                    grid[gridX, gridY - 1].GetComponent<Piece>()?.pieceType == p.pieceType &&
+                    grid[gridX, gridY - 2].GetComponent<Piece>()?.pieceType == p.pieceType;
+
+                if (leftMatch || bottomMatch)
+                {
+                    validChoices.RemoveAt(i);
+                }
+            }
+
+            if (validChoices.Count > 0)
+                return validChoices[Random.Range(0, validChoices.Count)];
+        }
+
+        return pool[Random.Range(0, pool.Count)];
+    }
+
     private void CreateGrid()
     {
-        // Use the seed from LevelData to ensure consistent piece placement
         Random.InitState(levelData.GridSeed);
+        ResetActivePiecePool();
 
         for (int x = 0; x < levelData.gridWidth; x++)
         {
@@ -870,25 +878,20 @@ public class GridManager : MonoBehaviour
                 if (IsBlocked(x, y))
                 {
                     grid[x, y] = null; // Explicitly mark as blocked
-                    //spawn brick prefab in blocked cells
                     GameObject brick = Instantiate(brickPrefab, new Vector2(x, y), Quaternion.identity);
-                    //brick.transform.SetParent(transform);
-                    //brick.transform.localScale = new Vector2(x, y);
                     brick.name = "Brick (" + x + ", " + y + ")";
-                    continue; // Skip to the next cell
-
-
+                    continue;
                 }
 
-                int randomIndex = Random.Range(0, piecePrefabs.Length);
+                GameObject selectedPrefab = GetRandomPiecePrefab(x, y);
                 GameObject newPiece = Instantiate(
-                    piecePrefabs[randomIndex],
+                    selectedPrefab,
                     new Vector2(x, y + 1f),
                     Quaternion.identity
                 );
 
                 Piece pieceScript = newPiece.GetComponent<Piece>();
-                pieceScript.SetPosition(x, y); //GameObject.SetPosition(Vector2)
+                pieceScript.SetPosition(x, y);
                 newPiece.transform.SetParent(transform);
                 newPiece.name = pieceScript.pieceType.ToString() + " (" + x + ", " + y + ")";
                 newPiece.transform.localScale = Vector3.zero;
@@ -897,10 +900,7 @@ public class GridManager : MonoBehaviour
                 newPiece.transform.DOMove(new Vector2(x, y), 0.3f).SetEase(Ease.OutBounce);
             }
         }
-
-        //Debug.Log("Grid created with seed: " + levelData.GridSeed);
     }
-
     void SpawnGridBackgroundBlock()
     {
         //spawn background block prefabs in the grid and it will be used to fill the grid background
@@ -917,105 +917,125 @@ public class GridManager : MonoBehaviour
     }
 
 
+
     public void UpdateGrid()
     {
-        if (!isRefilling)
+        if (isRefilling)
         {
-            canControl = false; // Disable control at the start
-            StartCoroutine(RefillGridCoroutine());
+            needsAnotherRefill = true;
+            return;
         }
-    }
 
+        StartCoroutine(RefillGridCoroutine());
+    }
 
     private IEnumerator RefillGridCoroutine()
     {
         isRefilling = true;
         canControl = false;
 
-        yield return new WaitForSeconds(0.2f);
-
-        // Pieces fall down to fill empty spaces
-        for (int x = 0; x < levelData.gridWidth; x++)
+        bool keepRefilling = true;
+        while (keepRefilling)
         {
-            int fallDelayIndex = 0;
+            needsAnotherRefill = false;
 
-            for (int y = 0; y < levelData.gridHeight; y++)
+            yield return new WaitForSeconds(0.2f);
+
+            // Phase 1: Gravity - existing upper pieces fall down into empty spaces below them
+            for (int x = 0; x < levelData.gridWidth; x++)
             {
-                if (grid[x, y] == null && !IsBlocked(x, y))
+                int fallDelayIndex = 0;
+                for (int y = 0; y < levelData.gridHeight; y++)
                 {
-                    for (int upperY = y + 1; upperY < levelData.gridHeight; upperY++)
+                    if (grid[x, y] == null && !IsBlocked(x, y))
                     {
-                        if (grid[x, upperY] != null && !IsBlocked(x, upperY))
+                        for (int upperY = y + 1; upperY < levelData.gridHeight; upperY++)
                         {
-                            GameObject fallingPiece = grid[x, upperY];
-                            Piece pieceScript = fallingPiece.GetComponent<Piece>();
+                            if (grid[x, upperY] != null && !IsBlocked(x, upperY))
+                            {
+                                GameObject fallingPiece = grid[x, upperY];
+                                Piece pieceScript = fallingPiece.GetComponent<Piece>();
+                                if (pieceScript != null)
+                                {
+                                    pieceScript.stickToGrid = false;
+                                    grid[x, y] = fallingPiece;
+                                    grid[x, upperY] = null;
+                                    pieceScript.X = x;
+                                    pieceScript.Y = y;
 
-                            // Disable grid sticking during fall
-                            pieceScript.stickToGrid = false;
+                                    Vector2 targetPos = new Vector2(x, y);
+                                    float fallTime = 0.35f;
+                                    float delay = fallDelayIndex * 0.05f;
 
-                            // Update grid references
-                            grid[x, y] = fallingPiece;
-                            grid[x, upperY] = null;
+                                    fallingPiece.transform.DOKill();
+                                    fallingPiece.transform.localScale = Vector3.one;
+                                    fallingPiece.transform.DOMove(targetPos, fallTime)
+                                        .SetEase(Ease.InQuad)
+                                        .SetDelay(delay);
 
-                            // Update logical position
-                            pieceScript.X = x;
-                            pieceScript.Y = y;
-
-                            // Animate fall
-                            Vector2 targetPos = new Vector2(x, y);
-                            float fallTime = 0.5f;
-                            float delay = fallDelayIndex * 0.06f;
-
-                            fallingPiece.transform.DOMove(targetPos, fallTime)
-                                .SetEase(Ease.InQuad)
-                                .SetDelay(delay);
-
-                            fallDelayIndex++;
-                            break;
+                                    fallDelayIndex++;
+                                }
+                                break;
+                            }
                         }
                     }
                 }
             }
-        }
 
-        yield return new WaitForSeconds(0.35f);
+            yield return new WaitForSeconds(0.35f);
 
-        Random.InitState(levelData.GridSeed);
-
-        // Refill empty cells with new pieces
-        for (int x = 0; x < levelData.gridWidth; x++)
-        {
-            for (int y = 0; y < levelData.gridHeight; y++)
+            // Phase 2: Spawn new pieces into all empty cells
+            for (int x = 0; x < levelData.gridWidth; x++)
             {
-                if (grid[x, y] == null && !IsBlocked(x, y))
+                for (int y = 0; y < levelData.gridHeight; y++)
                 {
-                    int randomIndex = Random.Range(0, piecePrefabs.Length);
-                    GameObject newPiece = Instantiate(
-                        piecePrefabs[randomIndex],
-                        new Vector2(x, levelData.gridHeight + 1f),
-                        Quaternion.identity
-                    );
-                    Piece pieceScript = newPiece.GetComponent<Piece>();
+                    if (grid[x, y] == null && !IsBlocked(x, y))
+                    {
+                        GameObject selectedPrefab = GetRandomPiecePrefab();
+                        GameObject newPiece = Instantiate(
+                            selectedPrefab,
+                            new Vector2(x, levelData.gridHeight + 1f),
+                            Quaternion.identity
+                        );
+                        Piece pieceScript = newPiece.GetComponent<Piece>();
+                        if (pieceScript != null)
+                        {
+                            pieceScript.stickToGrid = false;
+                            pieceScript.X = x;
+                            pieceScript.Y = y;
+                            newPiece.transform.SetParent(transform);
+                            newPiece.name = pieceScript.pieceType.ToString() + " (" + x + ", " + y + ")";
+                            newPiece.transform.localScale = Vector3.zero;
+                            grid[x, y] = newPiece;
 
-                    // Disable grid sticking during spawn animation
-                    pieceScript.stickToGrid = false;
-
-                    pieceScript.SetPosition(x, y);
-                    newPiece.transform.SetParent(transform);
-                    newPiece.name = pieceScript.pieceType.ToString() + " (" + x + ", " + y + ")";
-                    newPiece.transform.localScale = Vector3.zero;
-                    grid[x, y] = newPiece;
-
-                    newPiece.transform.DOScale(Vector3.one, 0.2f).SetEase(Ease.OutBack);
-                    newPiece.transform.DOMove(new Vector2(x, y), 0.3f).SetEase(Ease.OutBounce);
+                            newPiece.transform.DOScale(Vector3.one, 0.2f).SetEase(Ease.OutBack);
+                            newPiece.transform.DOMove(new Vector2(x, y), 0.35f).SetEase(Ease.OutBounce);
+                        }
+                    }
                 }
             }
+
+            yield return new WaitForSeconds(0.4f);
+
+            // Verify if any empty cells still exist on the board
+            bool hasEmptyCells = false;
+            for (int x = 0; x < levelData.gridWidth; x++)
+            {
+                for (int y = 0; y < levelData.gridHeight; y++)
+                {
+                    if (grid[x, y] == null && !IsBlocked(x, y))
+                    {
+                        hasEmptyCells = true;
+                        break;
+                    }
+                }
+                if (hasEmptyCells) break;
+            }
+
+            keepRefilling = hasEmptyCells || needsAnotherRefill;
         }
 
-        // Wait for all animations to finish
-        yield return new WaitForSeconds(0.5f);
-
-        // Re-enable stickToGrid for all pieces
+        // Re-enable stickToGrid and reset match states
         for (int x = 0; x < levelData.gridWidth; x++)
         {
             for (int y = 0; y < levelData.gridHeight; y++)
@@ -1026,7 +1046,7 @@ public class GridManager : MonoBehaviour
                     if (pieceScript != null)
                     {
                         pieceScript.stickToGrid = true;
-                        pieceScript.isMatched = false; // Reset match state for checking
+                        pieceScript.isMatched = false;
                     }
                 }
             }
@@ -1034,9 +1054,8 @@ public class GridManager : MonoBehaviour
 
         yield return new WaitForSeconds(0.1f);
 
-        // Check for matches after refill
+        // Check for cascade matches
         hasPendingMatches = false;
-        
         for (int x = 0; x < levelData.gridWidth; x++)
         {
             for (int y = 0; y < levelData.gridHeight; y++)
@@ -1054,12 +1073,9 @@ public class GridManager : MonoBehaviour
 
         yield return new WaitForSeconds(0.2f);
 
-        // If matches found, execute them and refill again
         if (hasPendingMatches)
         {
             Debug.Log("Cascade match found! Executing...");
-            
-            // Execute all matched pieces
             for (int x = 0; x < levelData.gridWidth; x++)
             {
                 for (int y = 0; y < levelData.gridHeight; y++)
@@ -1074,24 +1090,22 @@ public class GridManager : MonoBehaviour
                     }
                 }
             }
-            
-            // Wait for destruction animations
-            yield return new WaitForSeconds(0.5f);
-            
-            // Reset and refill again
+
+            yield return new WaitForSeconds(0.4f);
             isRefilling = false;
             UpdateGrid();
         }
         else
         {
-            // No matches found, safe to enable control
             isRefilling = false;
             canControl = true;
+            if (!HasPossibleMove())
+            {
+                ShuffleBoard();
+            }
             Debug.Log("Grid settled - control enabled");
         }
     }
-
-    // Add this helper method to check if any matches exist:
     public void SetHasPendingMatches(bool value)
     {
         hasPendingMatches = value;
@@ -1100,6 +1114,9 @@ public class GridManager : MonoBehaviour
 
     private bool IsBlocked(int x, int y)
     {
+        if (levelData == null || levelData.blockedCells == null)
+            return false;
+
         foreach (var blockedCell in levelData.blockedCells)
         {
             if (blockedCell.x == x && blockedCell.y == y)
@@ -1174,26 +1191,32 @@ public class GridManager : MonoBehaviour
 
     public void OnBombButtonClick()
     {
+        if (!canControl) return;
+
         if (Ability_bombCurrentAmount > 0)
         {
             isPlacingBomb = true;
+            isPlacingColor = false;
         }
         else
         {
-            // 🔥 FIXED: Now passes 2 arguments!
+            // ?? FIXED: Now passes 2 arguments!
             ItemWarningPanel(bombSprite, "Bomb");
         }
     }
 
     public void OnColorButtonClick()
     {
+        if (!canControl) return;
+
         if (Ability_colorBombCurrentAmount > 0)
         {
             isPlacingColor = true;
+            isPlacingBomb = false;
         }
         else
         {
-            // 🔥 FIXED: Now passes 2 arguments!
+            // ?? FIXED: Now passes 2 arguments!
             ItemWarningPanel(clownSprite, "Clown");
         }
     }
@@ -1203,7 +1226,7 @@ public class GridManager : MonoBehaviour
         // Check if player has enough extra moves before starting the animation
         if (Ability_extraMovesCurrentAmount > 0)
         {
-            // 🔥 THE FIX: Removed the "for (i < 5)" loop so it only spawns ONE image!
+            // ?? THE FIX: Removed the "for (i < 5)" loop so it only spawns ONE image!
             GameObject moveImg = Instantiate(moveImage, imageSpawm.position, Quaternion.identity, mainCanvas.transform);
             moveImg.transform.localScale = Vector3.zero; // Start from scale 0
             moveImg.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack); // Scale to normal size
@@ -1238,20 +1261,20 @@ public class GridManager : MonoBehaviour
 
     IEnumerator ReshuffleWithEmojiLoading()
     {
-        //first loading image Y position will come to 2500.
         RectTransform emojiRect = EmojisImage.GetComponent<RectTransform>();
-        
-        canControl = false; // Disable player controls during loading
-        // Move EmojisImage out of view (Y: 2500 to -1250
-        yield return emojiRect.DOAnchorPosY(-1250f, 1f).SetEase(Ease.InOutQuad).WaitForCompletion();
+        canControl = false;
+        if (emojiRect != null)
+        {
+            emojiRect.anchoredPosition = new Vector2(0f, 3000f);
+            yield return emojiRect.DOAnchorPosY(0f, 0.5f).SetEase(Ease.InOutQuad).WaitForCompletion();
+        }
         Reshuffle();
-        
-        waitforseconds: yield return new WaitForSeconds(0.5f);
-
-        // Move EmojisImage into view (Y: -1250 to 2500)
-        yield return emojiRect.DOAnchorPosY(2500f, 1f).SetEase(Ease.InOutQuad).WaitForCompletion();
-        canControl = true; // Re-enable player controls after loading
-        
+        yield return new WaitForSeconds(0.2f);
+        if (emojiRect != null)
+        {
+            yield return emojiRect.DOAnchorPosY(-3000f, 0.5f).SetEase(Ease.InOutQuad).WaitForCompletion();
+        }
+        canControl = true;
     }
 
 
@@ -1265,7 +1288,7 @@ public class GridManager : MonoBehaviour
         }
         else
         {
-            // 🔥 FIXED: Now passes 2 arguments!
+            // ?? FIXED: Now passes 2 arguments!
             ItemWarningPanel(shuffleSprite, "Shuffle"); 
             return; 
         }
@@ -1274,47 +1297,212 @@ public class GridManager : MonoBehaviour
         
         AudioManager.Instance.PlaySFX("GameStart");
 
-        // Reshuffle the grid pieces
-        List<Piece> allPieces = new List<Piece>();
-        // Collect all pieces from the grid
+        ShuffleBoard();
+    }
+
+    /// <summary>
+    /// Tests only right and up neighbours. Swapping can only create a match at one
+    /// of the two swapped cells, so this avoids allocating lists or moving objects.
+    /// </summary>
+    public bool HasPossibleMove()
+    {
+        if (grid == null || levelData == null) return false;
+
         for (int x = 0; x < levelData.gridWidth; x++)
         {
             for (int y = 0; y < levelData.gridHeight; y++)
             {
-                if (grid[x, y] != null)
-                {
-                    Piece pieceScript = grid[x, y].GetComponent<Piece>();
-                    allPieces.Add(pieceScript);
-                }
+                if (grid[x, y] == null || IsBlocked(x, y)) continue;
+
+                if (x + 1 < levelData.gridWidth && grid[x + 1, y] != null && !IsBlocked(x + 1, y) && WouldSwapCreateMatch(x, y, x + 1, y))
+                    return true;
+                if (y + 1 < levelData.gridHeight && grid[x, y + 1] != null && !IsBlocked(x, y + 1) && WouldSwapCreateMatch(x, y, x, y + 1))
+                    return true;
             }
         }
-        // Shuffle the list of pieces
-        for (int i = 0; i < allPieces.Count; i++)
-        {
-            Piece temp = allPieces[i];
-            int randomIndex = Random.Range(0, allPieces.Count);
-            allPieces[i] = allPieces[randomIndex];
-            allPieces[randomIndex] = temp;
-        }
-        // Reassign pieces back to the grid
-        int index = 0;
+        return false;
+    }
+
+    public void ShuffleBoard()
+    {
+        if (!isRefilling && gameObject.activeInHierarchy)
+            StartCoroutine(ShuffleBoardCoroutine());
+    }
+
+    private IEnumerator ShuffleBoardCoroutine()
+    {
+        const int maxAttempts = 100;
+        canControl = false;
+
+        var piecesToShuffle = new List<Piece>();
+        var cells = new List<Vector2Int>();
         for (int x = 0; x < levelData.gridWidth; x++)
         {
             for (int y = 0; y < levelData.gridHeight; y++)
             {
-                if (grid[x, y] != null)
-                {
-                    Piece pieceScript = allPieces[index];
-                    pieceScript.SetPosition(x, y);
-                    grid[x, y] = pieceScript.gameObject;
-                    index++;
-                }
+                GameObject pieceObject = grid[x, y];
+                if (pieceObject == null || IsBlocked(x, y)) continue;
+                Piece piece = pieceObject.GetComponent<Piece>();
+                if (piece == null) continue;
+                piecesToShuffle.Add(piece);
+                cells.Add(new Vector2Int(x, y));
             }
         }
-        // Deduct reshuffle ability count by 1
-        //DeductAbility_ColorBomb(1);
-        // Update UI after reshuffle
-        UpdateUI();
+
+        if (piecesToShuffle.Count < 3)
+        {
+            canControl = true;
+            yield break;
+        }
+
+        var original = new List<Piece>(piecesToShuffle);
+        bool validBoard = false;
+        for (int attempt = 0; attempt < maxAttempts && !validBoard; attempt++)
+        {
+            for (int i = piecesToShuffle.Count - 1; i > 0; i--)
+            {
+                int j = Random.Range(0, i + 1);
+                Piece temp = piecesToShuffle[i];
+                piecesToShuffle[i] = piecesToShuffle[j];
+                piecesToShuffle[j] = temp;
+            }
+
+            AssignPiecesToCells(piecesToShuffle, cells, false);
+            validBoard = !BoardHasPreExistingMatches() && HasPossibleMove();
+        }
+
+        if (!validBoard)
+        {
+            // If shuffling existing pieces couldn't produce a match, re-roll a few piece types
+            List<GameObject> pool = GetActivePiecePool();
+            for (int r = 0; r < 50 && !validBoard; r++)
+            {
+                // Re-roll 3 random pieces with active pool types
+                for (int k = 0; k < 3; k++)
+                {
+                    int randIndex = Random.Range(0, piecesToShuffle.Count);
+                    if (pool != null && pool.Count > 0)
+                    {
+                        GameObject prefab = pool[Random.Range(0, pool.Count)];
+                        Piece p = prefab.GetComponent<Piece>();
+                        if (p != null) piecesToShuffle[randIndex].pieceType = p.pieceType;
+                    }
+                }
+
+                AssignPiecesToCells(piecesToShuffle, cells, false);
+                validBoard = !BoardHasPreExistingMatches() && HasPossibleMove();
+            }
+        }
+        AssignPiecesToCells(piecesToShuffle, cells, true);
+        yield return new WaitForSeconds(0.35f);
+        canControl = true;
+    }
+
+    private void AssignPiecesToCells(List<Piece> piecesToAssign, List<Vector2Int> cells, bool animate)
+    {
+        for (int i = 0; i < cells.Count; i++)
+        {
+            Vector2Int cell = cells[i];
+            Piece piece = piecesToAssign[i];
+            grid[cell.x, cell.y] = piece.gameObject;
+            piece.X = cell.x;
+            piece.Y = cell.y;
+            piece.isMatched = false;
+            piece.stickToGrid = true;
+            if (animate)
+            {
+                piece.transform.DOKill();
+                piece.transform.DOMove(new Vector2(cell.x, cell.y), 0.3f).SetEase(Ease.InOutQuad);
+            }
+        }
+    }
+
+    private bool WouldSwapCreateMatch(int ax, int ay, int bx, int by)
+    {
+        if (grid[ax, ay] == null || grid[bx, by] == null) return false;
+        if (IsBlocked(ax, ay) || IsBlocked(bx, by)) return false;
+
+        GameObject a = grid[ax, ay];
+        GameObject b = grid[bx, by];
+
+        Piece pa = a.GetComponent<Piece>();
+        Piece pb = b.GetComponent<Piece>();
+
+        // Special pieces (Row, Column, Bomb, Color) can always be swapped to trigger their effects
+        if (pa != null && (pa.IsSpecialBombPiece || pa.IsSpecialRowPiece || pa.IsSpecialColoumnPiece || pa.IsSpecialColorPiece))
+            return true;
+        if (pb != null && (pb.IsSpecialBombPiece || pb.IsSpecialRowPiece || pb.IsSpecialColoumnPiece || pb.IsSpecialColorPiece))
+            return true;
+
+        grid[ax, ay] = b;
+        grid[bx, by] = a;
+
+        bool createsMatch = HasMatchAt(ax, ay) || HasMatchAt(bx, by);
+
+        grid[ax, ay] = a;
+        grid[bx, by] = b;
+
+        return createsMatch;
+    }
+    private bool BoardHasPreExistingMatches()
+    {
+        for (int x = 0; x < levelData.gridWidth; x++)
+            for (int y = 0; y < levelData.gridHeight; y++)
+                if (grid[x, y] != null && HasMatchAt(x, y)) return true;
+        return false;
+    }
+
+    private bool HasMatchAt(int x, int y)
+    {
+        Piece piece = grid[x, y] != null ? grid[x, y].GetComponent<Piece>() : null;
+        if (piece == null) return false;
+        PieceType type = piece.pieceType;
+        return CountSameType(x, y, -1, 0, type) + CountSameType(x, y, 1, 0, type) - 1 >= 3 ||
+               CountSameType(x, y, 0, -1, type) + CountSameType(x, y, 0, 1, type) - 1 >= 3;
+    }
+
+    private int CountSameType(int x, int y, int dx, int dy, PieceType type)
+    {
+        int count = 0;
+        while (x >= 0 && x < levelData.gridWidth && y >= 0 && y < levelData.gridHeight)
+        {
+            Piece piece = grid[x, y] != null ? grid[x, y].GetComponent<Piece>() : null;
+            if (piece == null || piece.pieceType != type) break;
+            count++;
+            x += dx;
+            y += dy;
+        }
+        return count;
+    }
+
+    public void RecordPlayerSwap(int x1, int y1, int x2 = -1, int y2 = -1)
+    {
+        lastSwapX = x1;
+        lastSwapY = y1;
+        lastSwapX1 = x1;
+        lastSwapY1 = y1;
+        lastSwapX2 = x2;
+        lastSwapY2 = y2;
+        specialSpawnClaimed = false;
+    }
+
+    public bool TryClaimSpecialSpawn(int x, int y)
+    {
+        if (specialSpawnClaimed || x != lastSwapX || y != lastSwapY) return false;
+        specialSpawnClaimed = true;
+        return true;
+    }
+
+    public bool TryGetPendingSpecialSource(out Piece piece)
+    {
+        piece = null;
+        if (specialSpawnClaimed || lastSwapX < 0 || lastSwapY < 0 ||
+            lastSwapX >= levelData.gridWidth || lastSwapY >= levelData.gridHeight)
+            return false;
+
+        GameObject source = grid[lastSwapX, lastSwapY];
+        piece = source != null ? source.GetComponent<Piece>() : null;
+        return piece != null && piece.isMatched;
     }
 
 
@@ -1371,26 +1559,17 @@ public class GridManager : MonoBehaviour
 
     public void DeductTarget1(int amount = 1)
     {
-        currentTarget1 -= amount;
-        if (currentTarget1 < 0)
-        {
-            currentTarget1 = 0;
-
-        }
+        currentTarget1Count = Mathf.Max(0, currentTarget1Count - amount);
+        currentTarget1 = currentTarget1Count;
         UpdateUI();
     }
 
     public void DeductTarget2(int amount = 1)
     {
-        currentTarget2 -= amount;
-        if (currentTarget2 < 0)
-        {
-            currentTarget2 = 0;
-
-        }
+        currentTarget2Count = Mathf.Max(0, currentTarget2Count - amount);
+        currentTarget2 = currentTarget2Count;
         UpdateUI();
     }
-
     public void DeductMove(int amount = 1)
     {
         currentMoves -= amount;
@@ -1453,7 +1632,7 @@ public class GridManager : MonoBehaviour
         }
         else
         {
-            // 🔥 THE FIX: Tell the save file you spent the item instantly!
+            // ?? THE FIX: Tell the save file you spent the item instantly!
             SaveNewAbilityCounts(Ability_bombCurrentAmount, Ability_colorBombCurrentAmount, Ability_extraMovesCurrentAmount, Ability_shuffleCurrentAmount);
         }
         UpdateUI();
@@ -1480,7 +1659,7 @@ public class GridManager : MonoBehaviour
         }
         else
         {
-            // 🔥 THE FIX: Tell the save file you spent the item instantly!
+            // ?? THE FIX: Tell the save file you spent the item instantly!
             SaveNewAbilityCounts(Ability_bombCurrentAmount, Ability_colorBombCurrentAmount, Ability_extraMovesCurrentAmount, Ability_shuffleCurrentAmount);
         }
         UpdateUI();
@@ -1507,7 +1686,7 @@ public class GridManager : MonoBehaviour
         }
         else
         {
-            // 🔥 THE FIX: Tell the save file you spent the item instantly!
+            // ?? THE FIX: Tell the save file you spent the item instantly!
             SaveNewAbilityCounts(Ability_bombCurrentAmount, Ability_colorBombCurrentAmount, Ability_extraMovesCurrentAmount, Ability_shuffleCurrentAmount);
         }   
         UpdateUI();
@@ -1524,14 +1703,14 @@ public class GridManager : MonoBehaviour
         }
         else
         {
-            // 🔥 THE FIX: Tell the save file you spent the item instantly!
+            // ?? THE FIX: Tell the save file you spent the item instantly!
             SaveNewAbilityCounts(Ability_bombCurrentAmount, Ability_colorBombCurrentAmount, Ability_extraMovesCurrentAmount, Ability_shuffleCurrentAmount);
         }
         UpdateUI();
     }
 
 
-    // 🔥 THE FIX: Added ", string boosterType" inside the parentheses!
+    // ?? THE FIX: Added ", string boosterType" inside the parentheses!
     public void ItemWarningPanel(Sprite iconToShow, string boosterType)
     {
         missingBoosterType = boosterType; // Remembers what we need to reward
@@ -1549,7 +1728,7 @@ public class GridManager : MonoBehaviour
 // Link your "WATCH VIDEO" UI button directly to this method!
     public void OnClickWatchAdInGame()
     {
-        // 🔥 We talk directly to the AdsManager now! No StageManager needed.
+        // ?? We talk directly to the AdsManager now! No StageManager needed.
         
         if (missingBoosterType == "Bomb")
         {
@@ -1643,18 +1822,18 @@ public class GridManager : MonoBehaviour
     public void SpawnHorizontalClear(int y)
     {
 
-        GameObject particle = Instantiate(horizontalClearParticle, new Vector2(levelData.gridWidth / 2f - 0.5f, y), Quaternion.identity);
-        particle.transform.SetParent(transform);
-        particle.name = "HorizontalClear (" + y + ")";
-        Destroy(particle, 1f); // Destroy after 1 second
+        GameObject particle = ObjectPoolManager.Spawn(horizontalClearParticle, new Vector2(levelData.gridWidth / 2f - 0.5f, y), Quaternion.identity);
+        ObjectPoolManager.Despawn(particle, 1f);
+
+
     }
 
     public void SpawnVerticalClear(int x)
     {
-        GameObject particle = Instantiate(verticalClearParticle, new Vector2(x, levelData.gridHeight / 2f - 0.5f), Quaternion.identity);
-        particle.transform.SetParent(transform);
-        particle.name = "VerticalClear (" + x + ")";
-        Destroy(particle, 1f); // Destroy after 1 second
+        GameObject particle = ObjectPoolManager.Spawn(verticalClearParticle, new Vector2(x, levelData.gridHeight / 2f - 0.5f), Quaternion.identity);
+        ObjectPoolManager.Despawn(particle, 1f);
+
+
     }
 
 
@@ -1670,29 +1849,51 @@ public class GridManager : MonoBehaviour
 
     public void PlayEffect()
     {
-        if (sprites.Length == 0 || targetImage == null) return;
+        if (sprites == null || sprites.Length == 0) return;
 
-        // If a previous tween is running, tween it back to zero immediately
-        if (currentSequence != null && currentSequence.IsActive() && currentSequence.IsPlaying())
+        // Auto-find or create targetImage on Canvas if not assigned or missing
+        if (targetImage == null)
+        {
+            Canvas canvas = mainCanvas != null ? mainCanvas.GetComponent<Canvas>() : FindObjectOfType<Canvas>();
+            if (canvas != null)
+            {
+                GameObject go = new GameObject("ActionTextPopup", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+                go.transform.SetParent(canvas.transform, false);
+                targetImage = go.GetComponent<Image>();
+                targetImage.raycastTarget = false;
+            }
+        }
+
+        if (targetImage == null) return;
+
+        if (currentSequence != null && currentSequence.IsActive())
         {
             currentSequence.Kill();
-            targetImage.transform.DOScale(Vector3.zero, scaleDuration * 0.5f).SetEase(Ease.InBack);
         }
+        targetImage.transform.DOKill();
 
         // Pick a random sprite
         SpriteData data = sprites[Random.Range(0, sprites.Length)];
+        if (data.sprite == null) return;
+
         targetImage.sprite = data.sprite;
+        targetImage.SetNativeSize();
+        targetImage.rectTransform.anchoredPosition = Vector2.zero; // Perfectly centered on screen
+        targetImage.transform.SetAsLastSibling(); // Ensure it renders on top of all UI layers
 
         // Reset scale
         targetImage.transform.localScale = Vector3.zero;
+        targetImage.enabled = true;
+        targetImage.gameObject.SetActive(true);
+
+        Vector3 endScale = new Vector3(1.2f, 1.2f, 1f);
 
         // Start new tween sequence
         currentSequence = DOTween.Sequence();
-        currentSequence.Append(targetImage.transform.DOScale(data.targetScale, scaleDuration).SetEase(Ease.OutBack));
+        currentSequence.Append(targetImage.transform.DOScale(endScale, scaleDuration).SetEase(Ease.OutBack));
         currentSequence.AppendInterval(holdDuration);
         currentSequence.Append(targetImage.transform.DOScale(Vector3.zero, scaleDuration).SetEase(Ease.InBack));
     }
-
     #endregion
 
 }

@@ -164,6 +164,22 @@ public class AdsManager : MonoBehaviour
         SceneManager.sceneLoaded -= OnSceneLoaded;
     }
 
+    private void OnApplicationPause(bool isPaused)
+    {
+        if (!isPaused && mobileAdsInitialized)
+        {
+            Debug.Log("[AdMob] App resumed from pause/background.");
+            if (bannerShouldBeVisible)
+            {
+                LoadBannerAd();
+            }
+            if (rewardedAd == null && !isCurrentlyLoading)
+            {
+                LoadRewardedAd();
+            }
+        }
+    }
+
 
     // ============================================================
     // SCENE HANDLING
@@ -617,6 +633,12 @@ public class AdsManager : MonoBehaviour
         {
             LoadRewardedAd();
         }
+
+        Scene currentScene = SceneManager.GetActiveScene();
+        if ((bannerShouldBeVisible || currentScene.name == MAIN_GAME_SCENE) && bannerView == null && mobileAdsInitialized)
+        {
+            LoadBannerAd();
+        }
     }
 
 
@@ -628,125 +650,80 @@ public class AdsManager : MonoBehaviour
     {
         if (!mobileAdsInitialized)
         {
-            Debug.LogWarning(
-                "[AdMob] MobileAds not initialized; " +
-                "aborting LoadBannerAd()."
-            );
-
+            Debug.LogWarning("[AdMob] MobileAds not initialized; aborting LoadBannerAd().");
             return;
         }
-
-
-        // --------------------------------------------------------
-        // IMPORTANT
-        // --------------------------------------------------------
-        //
-        // We no longer restrict banner loading to MainGame.
-        //
-        // This is necessary because Shop/Social/Settings are
-        // panels inside MainMenu.
-        //
-        // The banner visibility is controlled separately by
-        // bannerShouldBeVisible.
-        // --------------------------------------------------------
-
-
-        // Destroy old banner if one exists.
 
         if (bannerView != null)
         {
             bannerView.Destroy();
-
             bannerView = null;
         }
 
-
-        // Create banner.
+        // Use Anchored Adaptive Banner for optimal fill rate and crisp mobile scaling
+        AdSize bannerSize;
+        try
+        {
+            bannerSize = AdSize.GetCurrentOrientationAnchoredAdaptiveBannerAdSizeWithWidth(AdSize.FullWidth);
+        }
+        catch
+        {
+            bannerSize = AdSize.Banner;
+        }
 
         bannerView = new BannerView(
             GetBannerId(),
-            AdSize.Banner,
+            bannerSize,
             AdPosition.Top
         );
 
-
-        // --------------------------------------------------------
-        // LOAD FAILED
-        // --------------------------------------------------------
-
-        bannerView.OnBannerAdLoadFailed +=
-            (LoadAdError error) =>
-            {
-                LogLoadAdError(
-                    "Banner",
-                    GetBannerId(),
-                    error
-                );
-            };
-
-
-        // --------------------------------------------------------
-        // LOAD SUCCESS
-        // --------------------------------------------------------
-
-        bannerView.OnBannerAdLoaded += () =>
+        bannerView.OnBannerAdLoadFailed += (LoadAdError error) =>
         {
-            Debug.Log(
-                $"[AdMob][Banner] Loaded: " +
-                $"{GetBannerId()}"
-            );
-
-
-            // Check the current desired state.
-            //
-            // This is important because the player might have
-            // switched from Shop back to Home while the ad was
-            // still loading.
-
-            Scene currentScene =
-                SceneManager.GetActiveScene();
-
-
-            bool shouldShow =
-                bannerShouldBeVisible &&
-                (
-                    currentScene.name == MAIN_GAME_SCENE ||
-                    currentScene.name == "MainMenu"
-                );
-
-
-            if (shouldShow)
+            LogLoadAdError("Banner", GetBannerId(), error);
+            if (bannerView != null)
             {
-                bannerView.Show();
-
-                Debug.Log(
-                    "[AdMob][Banner] Banner shown."
-                );
+                bannerView.Destroy();
+                bannerView = null;
             }
-            else
-            {
-                bannerView.Hide();
 
-                Debug.Log(
-                    "[AdMob][Banner] Banner loaded but " +
-                    "kept hidden."
-                );
+            // Automatically retry loading after 5 seconds if the banner should be visible
+            Scene currentScene = SceneManager.GetActiveScene();
+            if (bannerShouldBeVisible || currentScene.name == MAIN_GAME_SCENE)
+            {
+                CancelInvoke(nameof(RetryLoadBanner));
+                Invoke(nameof(RetryLoadBanner), 5f);
             }
         };
 
+        bannerView.OnBannerAdLoaded += () =>
+        {
+            Debug.Log($"[AdMob][Banner] Loaded: {GetBannerId()}");
+            Scene currentScene = SceneManager.GetActiveScene();
+            bool shouldShow = bannerShouldBeVisible || currentScene.name == MAIN_GAME_SCENE;
 
-        // --------------------------------------------------------
-        // REQUEST AD
-        // --------------------------------------------------------
+            if (shouldShow && bannerView != null)
+            {
+                bannerView.Show();
+                Debug.Log("[AdMob][Banner] Banner shown.");
+            }
+            else if (bannerView != null)
+            {
+                bannerView.Hide();
+                Debug.Log("[AdMob][Banner] Banner loaded but kept hidden.");
+            }
+        };
 
-        bannerView.LoadAd(
-            new AdRequest()
-        );
+        bannerView.LoadAd(new AdRequest());
+        Debug.Log("[AdMob][Banner] Loading banner...");
+    }
 
-
-        Debug.Log(
-            "[AdMob][Banner] Loading banner..."
-        );
+    private void RetryLoadBanner()
+    {
+        if (bannerView == null && mobileAdsInitialized)
+        {
+            Debug.Log("[AdMob][Banner] Retrying banner load...");
+            LoadBannerAd();
+        }
     }
 
 
