@@ -393,6 +393,11 @@ public class GridManager : MonoBehaviour
 
     public void RestartCurrentLevel()
     {
+        // If they restart mid-game (before Game Over screen was triggered)
+        if (!isGameOverTriggered)
+        {
+            PlayerDataManager.Instance.RemoveEnergy(1);
+        }
         // Reload the current scene to restart the level
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
@@ -571,6 +576,9 @@ public class GridManager : MonoBehaviour
         }
         else
         {
+            // Player lost the level, deduct 1 energy/life
+            PlayerDataManager.Instance.RemoveEnergy(1);
+
             if (gameOverTitleText != null) gameOverTitleText.text = "Game Over!";
             if (Shine1 != null) Shine1.SetActive(false);
             if (Shine2 != null) Shine2.SetActive(true);
@@ -753,11 +761,13 @@ public class GridManager : MonoBehaviour
 
     public void ExitToMainMenu()
     {
+        // If they quit mid-game (before Game Over screen was triggered)
+        if (!isGameOverTriggered)
+        {
+            PlayerDataManager.Instance.RemoveEnergy(1);
+        }
         StartCoroutine(EmojiLoading_2());
         StartCoroutine(ExitScene());
-        //vibe or energy will lose 1 on exit to main menu
-        //PlayerDataManager.Instance.RemoveEnergy(1);
-
     }
 
     IEnumerator ExitScene()
@@ -884,7 +894,7 @@ public class GridManager : MonoBehaviour
                 }
 
                 GameObject selectedPrefab = GetRandomPiecePrefab(x, y);
-                GameObject newPiece = Instantiate(
+                GameObject newPiece = ObjectPoolManager.Spawn(
                     selectedPrefab,
                     new Vector2(x, y + 1f),
                     Quaternion.identity
@@ -992,7 +1002,7 @@ public class GridManager : MonoBehaviour
                     if (grid[x, y] == null && !IsBlocked(x, y))
                     {
                         GameObject selectedPrefab = GetRandomPiecePrefab();
-                        GameObject newPiece = Instantiate(
+                        GameObject newPiece = ObjectPoolManager.Spawn(
                             selectedPrefab,
                             new Vector2(x, levelData.gridHeight + 1f),
                             Quaternion.identity

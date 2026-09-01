@@ -19,11 +19,12 @@ MonoBehaviour:
   movesCount: 0
   target1Piece: 5
   target2Piece: 7
-  target1Count: 10
-  target2Count: 10
+  target1Count: 30
+  target2Count: 30
   timeLimit: 90
   isTimedLevel: 1
-  isMovesLevel: 0
+  isMovesLevel: 1
   blockedCells:
   - x: 2
     y: 3
+  colorCount: 4

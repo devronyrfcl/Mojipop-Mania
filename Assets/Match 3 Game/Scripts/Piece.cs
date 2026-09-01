@@ -72,19 +72,31 @@ public class Piece : MonoBehaviour
 
     void Start()
     {
-        gridManager = FindObjectOfType<GridManager>(); 
-
-        if (gridManager != null)
-        {
-            levelData = gridManager.levelData; 
-        }
-        else
-        {
-            Debug.LogError("GridManager not found in the scene.");
-        }
-        
-        StartCoroutine(AnimatePiece()); 
+        if (gridManager == null) gridManager = FindObjectOfType<GridManager>(); 
+        if (gridManager != null && levelData == null) levelData = gridManager.levelData;
         stickToGrid = true; 
+    }
+
+    private void OnEnable()
+    {
+        isMatched = false;
+        specialEffectPlayed = false;
+        stickToGrid = true;
+        preventSwipeBack = false;
+        transform.localScale = Vector3.one;
+        
+        Collider2D col = GetComponent<Collider2D>();
+        if (col != null) col.enabled = true;
+
+        if (gridManager == null) gridManager = FindObjectOfType<GridManager>();
+        if (gridManager != null && levelData == null) levelData = gridManager.levelData;
+        StartCoroutine(AnimatePiece());
+    }
+
+    private void OnDisable()
+    {
+        transform.DOKill();
+        StopAllCoroutines();
     }
 
     // Event-driven: polling Update removed for high mobile performance
@@ -96,14 +108,6 @@ public class Piece : MonoBehaviour
         if (gridManager == null) gridManager = FindObjectOfType<GridManager>();
         if (gridManager == null || PlayerDataManager.Instance == null) return;
         if (levelData == null && gridManager != null) levelData = gridManager.levelData;
-        if (Application.internetReachability == NetworkReachability.NotReachable)
-        {
-            if (PlayerDataManager.Instance != null) PlayerDataManager.Instance.isOnline = false;
-            gridManager.ActiveNoInternetConnectionPanel();
-            finalTouchPosition = Vector2.zero;
-            firstTouchPosition = Vector2.zero;
-            return;
-        }
 
         if (!gridManager.canControl)
         {
@@ -112,13 +116,16 @@ public class Piece : MonoBehaviour
             return;
         }
 
-        if (finalTouchPosition == Vector2.zero)
+        if (finalTouchPosition == Vector2.zero && firstTouchPosition == Vector2.zero)
             return;
 
         float dx = finalTouchPosition.x - firstTouchPosition.x;
         float dy = finalTouchPosition.y - firstTouchPosition.y;
 
-        if (Mathf.Abs(dx) < 0.2f && Mathf.Abs(dy) < 0.2f)
+        float swipeThreshold = Screen.dpi > 0 ? Screen.dpi * 0.08f : 20f;
+        if (swipeThreshold < 15f) swipeThreshold = 15f;
+
+        if (Mathf.Abs(dx) < swipeThreshold && Mathf.Abs(dy) < swipeThreshold)
         {
             // Tap-to-blast on tap release without dragging
             if (IsSpecialBombPiece && gridManager != null && gridManager.canControl)
@@ -323,20 +330,16 @@ public class Piece : MonoBehaviour
             return true;
         }
 
-        // 4. Color + Normal Piece: Clears all pieces of that color from the board
+        // 4. Color + Normal Piece: Smooth animated wave clearing all pieces of that color
         if (IsSpecialColorPiece)
         {
-            ClearColour(targetPiece.pieceType);
-            isMatched = true;
-            MarkAndDestroyColorPiece(this);
+            StartCoroutine(ClearColourRoutine(this, targetPiece.pieceType));
             return true;
         }
 
         if (targetPiece.IsSpecialColorPiece)
         {
-            ClearColour(pieceType);
-            targetPiece.isMatched = true;
-            MarkAndDestroyColorPiece(targetPiece);
+            StartCoroutine(ClearColourRoutine(targetPiece, pieceType));
             return true;
         }
 
@@ -518,7 +521,7 @@ public class Piece : MonoBehaviour
             {
                 gridManager?.GameOverLogic();
                 gridManager?.UpdateGrid();
-                Destroy(piece.gameObject);
+                ObjectPoolManager.Despawn(piece.gameObject);
             });
     }
 
@@ -529,7 +532,7 @@ public class Piece : MonoBehaviour
 
     private void OnMouseDown()
     {
-        firstTouchPosition = MainCam != null ? (Vector2)MainCam.ScreenToWorldPoint(Input.mousePosition) : Vector2.zero;
+        firstTouchPosition = Input.mousePosition;
         
         if (gridManager != null && gridManager.isPlacingBomb)
         {
@@ -548,7 +551,7 @@ public class Piece : MonoBehaviour
 
     private void OnMouseUp()
     {
-        finalTouchPosition = MainCam != null ? (Vector2)MainCam.ScreenToWorldPoint(Input.mousePosition) : Vector2.zero;
+        finalTouchPosition = Input.mousePosition;
         CalculateAngle();
         UpdateTargetPosition(); // Trigger swipe processing directly on finger release
     }
@@ -907,7 +910,7 @@ public class Piece : MonoBehaviour
         if (sourceCollider != null) sourceCollider.enabled = false;
         TriggerPieceMatchedEvent(pieceType);
         transform.DOKill();
-        transform.DOScale(Vector3.zero, 0.24f).SetEase(Ease.InBack).OnComplete(() => Destroy(gameObject));
+        transform.DOScale(Vector3.zero, 0.24f).SetEase(Ease.InBack).OnComplete(() => ObjectPoolManager.Despawn(gameObject));
 
         // Animate the special piece in at the correct size
         // Always scale special pieces to standard unit cell size (Vector3.one)
@@ -998,7 +1001,7 @@ public class Piece : MonoBehaviour
         {
             gridManager.SpawnParticleEffect(piece.X, piece.Y);
             gridManager.GameOverLogic();
-            Destroy(piece.gameObject);
+            ObjectPoolManager.Despawn(piece.gameObject);
             gridManager.PlayRandomSFX();
         });
     }
@@ -1140,7 +1143,7 @@ public class Piece : MonoBehaviour
         {
             gridManager.SpawnParticleEffect(piece.X, piece.Y);
             gridManager.GameOverLogic();
-            Destroy(piece.gameObject);
+            ObjectPoolManager.Despawn(piece.gameObject);
         });
     }
     void ClearAllPieces()
@@ -1161,22 +1164,105 @@ public class Piece : MonoBehaviour
         gridManager.UpdateGrid();
     }
 
-    void ClearColour(PieceType type)
+    public void ClearColour(PieceType type)
     {
-        if (levelData == null || gridManager == null) return;
+        StartCoroutine(ClearColourRoutine(this, type));
+    }
+
+    private IEnumerator ClearColourRoutine(Piece colorPiece, PieceType type)
+    {
+        if (gridManager == null || levelData == null) yield break;
+
+        gridManager.canControl = false;
+
+        // 1. Play energetic Clown spin and scale-up animation
+        if (colorPiece != null)
+        {
+            colorPiece.transform.DOScale(Vector3.one * 1.35f, 0.2f).SetEase(Ease.OutBack);
+            colorPiece.transform.DORotate(new Vector3(0, 0, 360), 0.35f, RotateMode.FastBeyond360).SetEase(Ease.OutQuad);
+        }
+
+        AudioManager.Instance?.PlaySFX("Swing_1");
+        yield return new WaitForSeconds(0.2f);
+
+        // 2. Gather all matching emojis across the board
+        List<Piece> targetPieces = new List<Piece>();
         for (int x = 0; x < levelData.gridWidth; x++)
         {
             for (int y = 0; y < levelData.gridHeight; y++)
             {
-                Piece piece = gridManager.grid[x, y]?.GetComponent<Piece>();
-                if (piece != null && piece.pieceType == type && !piece.isMatched)
+                Piece p = gridManager.grid[x, y]?.GetComponent<Piece>();
+                if (p != null && p.pieceType == type && !p.isMatched && p != colorPiece)
                 {
-                    piece.isMatched = true;
-                    MarkPieceDestroyed(piece);
+                    targetPieces.Add(p);
                 }
             }
         }
-        gridManager.UpdateGrid();
+
+        // 3. Staggered cascade pop wave across target emojis
+        float staggerDelay = 0.045f;
+        for (int i = 0; i < targetPieces.Count; i++)
+        {
+            Piece p = targetPieces[i];
+            if (p != null && !p.isMatched)
+            {
+                p.isMatched = true;
+                p.transform.DOKill();
+                p.transform.DOScale(Vector3.one * 1.25f, 0.1f).SetEase(Ease.OutQuad).OnComplete(() =>
+                {
+                    if (p != null)
+                    {
+                        p.transform.DOScale(Vector3.zero, 0.15f).SetEase(Ease.InBack).OnComplete(() =>
+                        {
+                            if (p != null)
+                            {
+                                MarkPieceDestroyed(p);
+                            }
+                        });
+                    }
+                });
+
+                AudioManager.Instance?.PlaySFX("Pop_5");
+                yield return new WaitForSeconds(staggerDelay);
+            }
+        }
+
+        yield return new WaitForSeconds(0.15f);
+
+        // 4. Clown final celebratory burst and clean despawn
+        if (colorPiece != null)
+        {
+            colorPiece.isMatched = true;
+            if (gridManager.grid != null && colorPiece.X >= 0 && colorPiece.Y >= 0 && colorPiece.X < levelData.gridWidth && colorPiece.Y < levelData.gridHeight)
+            {
+                gridManager.grid[colorPiece.X, colorPiece.Y] = null;
+            }
+
+            colorPiece.transform.DOScale(Vector3.one * 1.5f, 0.12f).SetEase(Ease.OutBack).OnComplete(() =>
+            {
+                if (colorPiece != null)
+                {
+                    if (colorPiece.matchedParticle != null)
+                    {
+                        GameObject mp = ObjectPoolManager.Spawn(colorPiece.matchedParticle, colorPiece.transform.position, Quaternion.identity);
+                        ObjectPoolManager.Despawn(mp, 1.5f);
+                    }
+                    colorPiece.transform.DOScale(Vector3.zero, 0.18f).SetEase(Ease.InBack).OnComplete(() =>
+                    {
+                        ObjectPoolManager.Despawn(colorPiece.gameObject);
+                        gridManager.UpdateGrid();
+                        gridManager.GameOverLogic();
+                        gridManager.canControl = true;
+                    });
+                }
+            });
+        }
+        else
+        {
+            gridManager.UpdateGrid();
+            gridManager.GameOverLogic();
+            gridManager.canControl = true;
+        }
     }
 
     void Bomb(int x, int y)
@@ -1231,7 +1317,7 @@ public class Piece : MonoBehaviour
             {
                 gridManager.UpdateGrid();
                 gridManager.GameOverLogic();
-                Destroy(colorPiece.gameObject);
+                ObjectPoolManager.Despawn(colorPiece.gameObject);
             });
     }
 
@@ -1320,7 +1406,7 @@ public class Piece : MonoBehaviour
         if (sourceCollider != null) sourceCollider.enabled = false;
 
         transform.DOKill();
-        transform.DOScale(Vector3.zero, 0.22f).SetEase(Ease.InBack).OnComplete(() => Destroy(gameObject));
+        transform.DOScale(Vector3.zero, 0.22f).SetEase(Ease.InBack).OnComplete(() => ObjectPoolManager.Despawn(gameObject));
         placedBooster.transform.DOScale(Vector3.one, 0.28f).SetDelay(0.14f).SetEase(Ease.OutBack);
     }
 

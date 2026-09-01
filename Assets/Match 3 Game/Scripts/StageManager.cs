@@ -237,11 +237,12 @@ private void ApplyDataToButtons()
         // Debounce lock
         isStartingLevel = true;
 
-        PlayerDataManager.Instance.RemoveEnergy(1);
-        if (CurrentEnergyText != null)
-        {
-            CurrentEnergyText.text = PlayerDataManager.Instance.GetEnergyCount().ToString();
-        }
+        // Energy is now only subtracted if the player loses or exits/restarts mid-game!
+        // PlayerDataManager.Instance.RemoveEnergy(1);
+        // if (CurrentEnergyText != null)
+        // {
+        //     CurrentEnergyText.text = PlayerDataManager.Instance.GetEnergyCount().ToString();
+        // }
 
         // Smooth emoji curtain slide down to cover screen
         RectTransform emojiRect = EmojisImage != null ? EmojisImage.GetComponent<RectTransform>() : null;
@@ -307,42 +308,14 @@ private void ApplyDataToButtons()
 
     private void FetchPlayerDataFromPlayFab()
     {
-        if (!PlayerDataManager.Instance.isOnline) return;
-        var request = new GetUserDataRequest();
-        PlayFabClientAPI.GetUserData(request, OnPlayFabDataReceived, OnPlayFabError);
-    }
-
-    private void OnPlayFabDataReceived(GetUserDataResult result)
-    {
-        if (PlayerDataManager.Instance == null || PlayerDataManager.Instance.playerData == null) return;
-        var pData = PlayerDataManager.Instance.playerData;
-
-        if (result.Data != null)
+        // Centralized through PlayerDataManager to prevent race conditions and duplicate queries
+        if (PlayerDataManager.Instance != null)
         {
-            if (result.Data.ContainsKey("PlayerName")) pData.Name = result.Data["PlayerName"].Value;
-            if (result.Data.ContainsKey("PlayerID")) pData.PlayerID = result.Data["PlayerID"].Value;
-            if (result.Data.ContainsKey("CurrentLevelId")) pData.CurrentLevelId = int.Parse(result.Data["CurrentLevelId"].Value);
-            if (result.Data.ContainsKey("PlayerEnergyCount")) pData.EnergyCount = int.Parse(result.Data["PlayerEnergyCount"].Value);
-
-            // First-time players should start with 3 boosters if PlayFab has no saved value yet.
-            pData.PlayerBombAbilityCount = result.Data.ContainsKey("PlayerBombAbilityCount") ? int.Parse(result.Data["PlayerBombAbilityCount"].Value) : 3;
-            pData.PlayerColorBombAbilityCount = result.Data.ContainsKey("PlayerColorBombAbilityCount") ? int.Parse(result.Data["PlayerColorBombAbilityCount"].Value) : 3;
-            pData.PlayerExtraMoveAbilityCount = result.Data.ContainsKey("PlayerExtraMoveAbilityCount") ? int.Parse(result.Data["PlayerExtraMoveAbilityCount"].Value) : 3;
-            pData.PlayerShuffleAbilityCount = result.Data.ContainsKey("PlayerShuffleAbilityCount") ? int.Parse(result.Data["PlayerShuffleAbilityCount"].Value) : 3;
-
-            if (result.Data.ContainsKey("Levels"))
-            {
-                string levelsJson = result.Data["Levels"].Value;
-                LevelListWrapper wrapper = JsonUtility.FromJson<LevelListWrapper>(levelsJson);
-                pData.Levels = wrapper.Levels;
-            }
-            
-            PlayerDataManager.Instance.GetCurrentLevel();
-            PlayerDataManager.Instance.SavePlayerData();
-
-            ApplyDataToButtons();
-            ShowTotalXPandTotalStars();
-            CheckAndShowNamePanel();
+            PlayerDataManager.Instance.LoadPlayerData();
+        }
+        else
+        {
+            RefreshLocalUI();
         }
     }
 

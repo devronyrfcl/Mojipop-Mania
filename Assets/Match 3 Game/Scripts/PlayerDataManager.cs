@@ -9,6 +9,8 @@ using UnityEngine.UI;
 using TMPro;
 using System.Linq;
 using UnityEngine.UIElements;
+using System.Security.Cryptography;
+using System.Text;
 
 [Serializable]
 public class LevelListWrapper
@@ -65,6 +67,9 @@ public class PlayerDataManager : MonoBehaviour
         
         savePath = Path.Combine(Application.persistentDataPath, "playerdata.json");
         stageManager = FindObjectOfType<StageManager>();
+
+        // Load local cached data immediately so we are initialized and never null on startup
+        LoadLocalDataAsCache();
     }
 
     void Start()
@@ -77,10 +82,136 @@ public class PlayerDataManager : MonoBehaviour
         GetCurrentLevel(); 
 
         CalculateOfflineEnergyRegen();
+
+        if (energyRegenCoroutine != null) StopCoroutine(energyRegenCoroutine);
         energyRegenCoroutine = StartCoroutine(EnergyRegenCoroutine());
+
+        if (internetCheckCoroutine != null) StopCoroutine(internetCheckCoroutine);
         internetCheckCoroutine = StartCoroutine(InternetCheckCoroutine());
     }
 
+    private void LoadLocalDataAsCache()
+    {
+        if (File.Exists(savePath))
+        {
+            try
+            {
+                string rawData = File.ReadAllText(savePath);
+                string decryptedJson = DecryptSaveData(rawData);
+                playerData = JsonUtility.FromJson<PlayerData>(decryptedJson);
+                GetCurrentLevel();
+                stageManager?.RefreshLocalUI();
+                Debug.Log("Loaded local data cache successfully.");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("Error loading local cache: " + e.Message);
+            }
+        }
+
+        if (playerData == null)
+        {
+            CreateNewPlayer("Temp", Guid.NewGuid().ToString());
+            GetCurrentLevel();
+        }
+    }
+
+    #region "AES-256 Encryption & Security"
+    // 256-bit Key & 128-bit IV derived securely
+    private static readonly byte[] AesKey = SHA256.Create().ComputeHash(Encoding.UTF8.GetBytes("MojiPopMania_SecureSaltKey_2026_@!#"));
+    private static readonly byte[] AesIV = MD5.Create().ComputeHash(Encoding.UTF8.GetBytes("MojiPopMania_IV_2026!"));
+
+    public static string EncryptAES(string plainText)
+    {
+        if (string.IsNullOrEmpty(plainText)) return plainText;
+        try
+        {
+            using (Aes aes = Aes.Create())
+            {
+                aes.Key = AesKey;
+                aes.IV = AesIV;
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    using (CryptoStream cs = new CryptoStream(ms, aes.CreateEncryptor(), CryptoStreamMode.Write))
+                    {
+                        byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
+                        cs.Write(plainBytes, 0, plainBytes.Length);
+                        cs.FlushFinalBlock();
+                    }
+                    return Convert.ToBase64String(ms.ToArray());
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"AES Encryption error: {e.Message}");
+            return plainText;
+        }
+    }
+
+    public static string DecryptAES(string cipherText)
+    {
+        if (string.IsNullOrEmpty(cipherText)) return cipherText;
+        try
+        {
+            byte[] cipherBytes = Convert.FromBase64String(cipherText);
+            using (Aes aes = Aes.Create())
+            {
+                aes.Key = AesKey;
+                aes.IV = AesIV;
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+
+                using (MemoryStream ms = new MemoryStream(cipherBytes))
+                {
+                    using (CryptoStream cs = new CryptoStream(ms, aes.CreateDecryptor(), CryptoStreamMode.Read))
+                    {
+                        using (StreamReader reader = new StreamReader(cs, Encoding.UTF8))
+                        {
+                            return reader.ReadToEnd();
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            return null; // Triggers fallback to legacy XOR for smooth migration
+        }
+    }
+
+    // Decrypts with AES-256 first, with automatic backward-compatibility fallback to legacy XOR
+    private string DecryptSaveData(string rawData)
+    {
+        if (string.IsNullOrEmpty(rawData)) return "";
+
+        // 1. Try AES-256 first
+        string aesDecrypted = DecryptAES(rawData);
+        if (!string.IsNullOrEmpty(aesDecrypted) && aesDecrypted.Contains("CurrentLevelId"))
+        {
+            return aesDecrypted;
+        }
+
+        // 2. Backward compatibility fallback: Try legacy XOR
+        try
+        {
+            string xorDecrypted = XorEncryptDecrypt(rawData);
+            if (!string.IsNullOrEmpty(xorDecrypted) && xorDecrypted.Contains("CurrentLevelId"))
+            {
+                Debug.Log("Migrated legacy save file to AES-256.");
+                return xorDecrypted;
+            }
+        }
+        catch {}
+
+        // 3. Fallback: plain JSON
+        return rawData;
+    }
+
+    // Retained strictly for seamless backward-compatibility migration of existing installs
     private string XorEncryptDecrypt(string data, string key = "Heil")
     {
         char[] result = new char[data.Length];
@@ -90,6 +221,7 @@ public class PlayerDataManager : MonoBehaviour
         }
         return new string(result);
     }
+    #endregion
 
     private IEnumerator InternetCheckCoroutine()
     {
@@ -106,13 +238,13 @@ public class PlayerDataManager : MonoBehaviour
         {
             Name = name,
             PlayerID = playerId,
-            // ?? FIX: A brand new player now starts with 3 of everything!
             PlayerBombAbilityCount = 3,
             PlayerColorBombAbilityCount = 3,
             PlayerExtraMoveAbilityCount = 3,
             PlayerShuffleAbilityCount = 3,
             CurrentLevelId = 1,
             EnergyCount = 5,
+            LastEnergyUpdateTime = GetCurrentUnixTime(),
             Levels = new List<LevelInfo>()
             {
                 new LevelInfo { LevelID = 1, Stars = 0, XP = 0, LevelLocked = 0 },
@@ -161,7 +293,7 @@ public class PlayerDataManager : MonoBehaviour
         if (playerData != null)
         {
             string json = JsonUtility.ToJson(playerData, true);
-            string encryptedJson = XorEncryptDecrypt(json);
+            string encryptedJson = EncryptAES(json);
             File.WriteAllText(savePath, encryptedJson);
         }
 
@@ -173,36 +305,56 @@ public class PlayerDataManager : MonoBehaviour
 
     public void LoadPlayerData()
     {
-        if (isOnline)
+        if (isOnline && PlayFabClientAPI.IsClientLoggedIn())
         {
             PlayFabClientAPI.GetUserData(new GetUserDataRequest(), result =>
             {
                 if (result.Data != null && result.Data.ContainsKey("Levels"))
                 {
                     string levelsJson = result.Data["Levels"].Value;
-                    playerData = new PlayerData
+                    int cloudLevel = result.Data.ContainsKey("CurrentLevelId") ? int.Parse(result.Data["CurrentLevelId"].Value) : 1;
+                    var cloudLevelsList = JsonUtility.FromJson<LevelListWrapper>(levelsJson)?.Levels ?? new List<LevelInfo>();
+
+                    // Smart Merge: If local progress is higher than cloud (e.g. offline play), preserve local progress and upload!
+                    if (playerData != null && playerData.CurrentLevelId > cloudLevel)
                     {
-                        Name = result.Data.ContainsKey("PlayerName") ? result.Data["PlayerName"].Value : "Temp",
-                        PlayerID = result.Data.ContainsKey("PlayerID") ? result.Data["PlayerID"].Value : Guid.NewGuid().ToString(),
-                        CurrentLevelId = result.Data.ContainsKey("CurrentLevelId") ? int.Parse(result.Data["CurrentLevelId"].Value) : 1,
-                        
-                        // ?? FIX: Fallbacks from PlayFab are now 0 instead of 20!
-                        PlayerBombAbilityCount = result.Data.ContainsKey("PlayerBombAbilityCount") ? int.Parse(result.Data["PlayerBombAbilityCount"].Value) : 3,
-                        PlayerColorBombAbilityCount = result.Data.ContainsKey("PlayerColorBombAbilityCount") ? int.Parse(result.Data["PlayerColorBombAbilityCount"].Value) : 3,
-                        PlayerExtraMoveAbilityCount = result.Data.ContainsKey("PlayerExtraMoveAbilityCount") ? int.Parse(result.Data["PlayerExtraMoveAbilityCount"].Value) : 3,
-                        PlayerShuffleAbilityCount = result.Data.ContainsKey("PlayerShuffleAbilityCount") ? int.Parse(result.Data["PlayerShuffleAbilityCount"].Value) : 3,
-                        
-                        EnergyCount = result.Data.ContainsKey("PlayerEnergyCount") ? int.Parse(result.Data["PlayerEnergyCount"].Value) : 5,
-                        Levels = JsonUtility.FromJson<LevelListWrapper>(levelsJson).Levels
-                    };
-                    Debug.Log("Player data loaded from PlayFab.");
+                        Debug.Log($"Local progress (Level {playerData.CurrentLevelId}) is ahead of Cloud (Level {cloudLevel}). Syncing local to Cloud.");
+                        playerData.Levels = MergeLevels(playerData.Levels, cloudLevelsList);
+                        SavePlayerData();
+                    }
+                    else
+                    {
+                        var mergedLevels = (playerData != null) ? MergeLevels(cloudLevelsList, playerData.Levels) : cloudLevelsList;
+                        playerData = new PlayerData
+                        {
+                            Name = result.Data.ContainsKey("PlayerName") ? result.Data["PlayerName"].Value : (playerData != null ? playerData.Name : "Temp"),
+                            PlayerID = result.Data.ContainsKey("PlayerID") ? result.Data["PlayerID"].Value : (playerData != null ? playerData.PlayerID : Guid.NewGuid().ToString()),
+                            CurrentLevelId = cloudLevel,
+                            
+                            PlayerBombAbilityCount = result.Data.ContainsKey("PlayerBombAbilityCount") ? int.Parse(result.Data["PlayerBombAbilityCount"].Value) : 3,
+                            PlayerColorBombAbilityCount = result.Data.ContainsKey("PlayerColorBombAbilityCount") ? int.Parse(result.Data["PlayerColorBombAbilityCount"].Value) : 3,
+                            PlayerExtraMoveAbilityCount = result.Data.ContainsKey("PlayerExtraMoveAbilityCount") ? int.Parse(result.Data["PlayerExtraMoveAbilityCount"].Value) : 3,
+                            PlayerShuffleAbilityCount = result.Data.ContainsKey("PlayerShuffleAbilityCount") ? int.Parse(result.Data["PlayerShuffleAbilityCount"].Value) : 3,
+                            
+                            EnergyCount = result.Data.ContainsKey("PlayerEnergyCount") ? int.Parse(result.Data["PlayerEnergyCount"].Value) : 5,
+                            LastEnergyUpdateTime = result.Data.ContainsKey("LastEnergyUpdateTime") ? long.Parse(result.Data["LastEnergyUpdateTime"].Value) : 0,
+                            Levels = mergedLevels
+                        };
+                        Debug.Log("Player data synced from PlayFab.");
+                    }
+
+                    CalculateOfflineEnergyRegen();
                     GetCurrentLevel();
                     stageManager?.RefreshLocalUI();
                 }
                 else
                 {
-                    Debug.LogWarning("No data found on PlayFab, creating new player...");
-                    CreateNewPlayer("Temp", Guid.NewGuid().ToString());
+                    Debug.LogWarning("No data found on PlayFab. Checking for local data to upload...");
+                    if (playerData == null)
+                    {
+                        CreateNewPlayer("Temp", Guid.NewGuid().ToString());
+                    }
+                    CalculateOfflineEnergyRegen();
                     SavePlayerData();
                     GetCurrentLevel();
                     stageManager?.RefreshLocalUI();
@@ -214,15 +366,17 @@ public class PlayerDataManager : MonoBehaviour
             Debug.LogWarning("Offline mode: Loading local JSON data.");
             if (File.Exists(savePath))
             {
-                string encryptedJson = File.ReadAllText(savePath);
-                string decryptedJson = XorEncryptDecrypt(encryptedJson);
+                string rawData = File.ReadAllText(savePath);
+                string decryptedJson = DecryptSaveData(rawData);
                 playerData = JsonUtility.FromJson<PlayerData>(decryptedJson);
+                CalculateOfflineEnergyRegen();
                 GetCurrentLevel();
                 stageManager?.RefreshLocalUI();
             }
             else
             {
                 CreateNewPlayer("Temp", Guid.NewGuid().ToString());
+                CalculateOfflineEnergyRegen();
                 SavePlayerData();
                 GetCurrentLevel();
                 stageManager?.RefreshLocalUI();
@@ -342,11 +496,16 @@ public class PlayerDataManager : MonoBehaviour
     void OnError(PlayFabError error)
     {
         isOnline = false;
+        // Fallback to loading offline local data if login fails on startup
+        if (playerData == null)
+        {
+            LoadPlayerData();
+        }
     }
 
     public void SetUserName(string name)
     {
-        if (!string.IsNullOrEmpty(name))
+        if (!string.IsNullOrEmpty(name) && PlayFabClientAPI.IsClientLoggedIn())
         {
             var request = new UpdateUserTitleDisplayNameRequest { DisplayName = name };
             PlayFabClientAPI.UpdateUserTitleDisplayName(request, OnUpdateUserNameSuccess, OnError);
@@ -355,7 +514,7 @@ public class PlayerDataManager : MonoBehaviour
 
     public void SendPlayerDataToPlayFab()
     {
-        if (!isOnline || playerData == null) return;
+        if (!isOnline || !PlayFabClientAPI.IsClientLoggedIn() || playerData == null) return;
 
         string levelsJson = JsonUtility.ToJson(new LevelListWrapper { Levels = playerData.Levels }, true);
 
@@ -371,6 +530,7 @@ public class PlayerDataManager : MonoBehaviour
                 { "PlayerExtraMoveAbilityCount", playerData.PlayerExtraMoveAbilityCount.ToString() },
                 { "PlayerShuffleAbilityCount", playerData.PlayerShuffleAbilityCount.ToString() },
                 { "PlayerEnergyCount", playerData.EnergyCount.ToString() },
+                { "LastEnergyUpdateTime", playerData.LastEnergyUpdateTime.ToString() },
                 { "Levels", levelsJson }
             }
         };
@@ -403,7 +563,7 @@ public class PlayerDataManager : MonoBehaviour
 
     public void SendLeaderboard(int TotalXP)
     {
-        if (!isOnline) return;
+        if (!isOnline || !PlayFabClientAPI.IsClientLoggedIn()) return;
 
         var request = new UpdatePlayerStatisticsRequest
         {
@@ -414,7 +574,7 @@ public class PlayerDataManager : MonoBehaviour
 
     public void GetLeaderboard()
     {
-        if (!isOnline) return;
+        if (!isOnline || !PlayFabClientAPI.IsClientLoggedIn()) return;
 
         var request = new GetLeaderboardRequest
         {
@@ -431,6 +591,7 @@ public class PlayerDataManager : MonoBehaviour
 
     void CheckForOnline()
     {
+        if (!PlayFabClientAPI.IsClientLoggedIn()) return;
         PlayFabClientAPI.GetTitleData(new GetTitleDataRequest(), OnSuccess, OnError);
     }
 
@@ -441,7 +602,6 @@ public class PlayerDataManager : MonoBehaviour
     }
     #endregion
 
-    // Client requirement: each energy refill takes 1 hour.
     private const int ENERGY_REGEN_MINUTES = 60;
     private const int MAX_ENERGY = 5;
 
@@ -468,9 +628,6 @@ public class PlayerDataManager : MonoBehaviour
 
     public void RemoveEnergy(int amount)
     {
-        // ?? FIX 2: THE CRITICAL BUG! 
-        // Only start a new timer if our energy was completely full. 
-        // If it's already below max, a timer is currently running, so do NOT reset it!
         if (playerData.EnergyCount >= MAX_ENERGY)
         {
             playerData.LastEnergyUpdateTime = GetCurrentUnixTime();
@@ -482,7 +639,7 @@ public class PlayerDataManager : MonoBehaviour
             playerData.EnergyCount -= amount;
 
         SavePlayerData();
-        if (isOnline) SendPlayerDataToPlayFab(); // Ensure the server knows we lost a life
+        if (isOnline) SendPlayerDataToPlayFab();
     }
 
     public int GetEnergyCount() 
@@ -492,24 +649,36 @@ public class PlayerDataManager : MonoBehaviour
 
     private void CalculateOfflineEnergyRegen()
     {
+        if (playerData == null) return;
         if (playerData.EnergyCount >= MAX_ENERGY) return;
 
         long currentTime = GetCurrentUnixTime();
         long lastUpdateTime = playerData.LastEnergyUpdateTime;
 
+        // If we have no record of when the last energy check occurred,
+        // it means they've been gone for a while or it's a first load. Default to max energy!
         if (lastUpdateTime == 0)
         {
+            playerData.EnergyCount = MAX_ENERGY;
             playerData.LastEnergyUpdateTime = currentTime;
             SavePlayerData();
             return;
         }
 
         long timeDifference = currentTime - lastUpdateTime;
+
+        // Handle negative time shifts (timezone shifts or time cheating)
+        if (timeDifference < 0)
+        {
+            playerData.LastEnergyUpdateTime = currentTime;
+            SavePlayerData();
+            return;
+        }
+
         int minutesPassed = (int)(timeDifference / 60);
 
         if (minutesPassed >= ENERGY_REGEN_MINUTES)
         {
-            // Calculate how many individual lives we earned while the app was closed
             int energyToAdd = minutesPassed / ENERGY_REGEN_MINUTES;
             int newEnergy = Mathf.Min(playerData.EnergyCount + energyToAdd, MAX_ENERGY);
             
@@ -519,9 +688,17 @@ public class PlayerDataManager : MonoBehaviour
             {
                 playerData.EnergyCount = newEnergy;
                 
-                // Shift the timer forward based ONLY on the lives actually regenerated
-                long timeUsedForRegen = actualEnergyAdded * ENERGY_REGEN_MINUTES * 60;
-                playerData.LastEnergyUpdateTime = lastUpdateTime + timeUsedForRegen;
+                // If they fully recharged to max energy, sync timer anchor to now.
+                // Otherwise, increment the timer anchor forward by exactly the recharged amount.
+                if (playerData.EnergyCount >= MAX_ENERGY)
+                {
+                    playerData.LastEnergyUpdateTime = currentTime;
+                }
+                else
+                {
+                    long timeUsedForRegen = actualEnergyAdded * ENERGY_REGEN_MINUTES * 60;
+                    playerData.LastEnergyUpdateTime = lastUpdateTime + timeUsedForRegen;
+                }
                 
                 SavePlayerData();
             }
@@ -532,21 +709,28 @@ public class PlayerDataManager : MonoBehaviour
     {
         while (true)
         {
-            // ?? Check every 1 second instead of 60s so your UI timer ticks down perfectly smoothly
             yield return new WaitForSeconds(1f);
+
+            if (playerData == null) continue;
 
             if (playerData.EnergyCount >= MAX_ENERGY) 
             {
-                // Keep the timer anchored to 'now' so it doesn't instantly give a life when we spend one later
                 playerData.LastEnergyUpdateTime = GetCurrentUnixTime();
                 continue;
             }
 
             long currentTime = GetCurrentUnixTime();
             long timeDifference = currentTime - playerData.LastEnergyUpdateTime;
+
+            if (timeDifference < 0)
+            {
+                playerData.LastEnergyUpdateTime = currentTime;
+                SavePlayerData();
+                continue;
+            }
+
             int minutesPassed = (int)(timeDifference / 60);
 
-            // Refill exactly 1 life every hour.
             if (minutesPassed >= ENERGY_REGEN_MINUTES)
             {
                 int energyToAdd = minutesPassed / ENERGY_REGEN_MINUTES;
@@ -558,12 +742,18 @@ public class PlayerDataManager : MonoBehaviour
                 {
                     playerData.EnergyCount = newEnergy;
                     
-                    long timeUsedForRegen = actualEnergyAdded * ENERGY_REGEN_MINUTES * 60;
-                    playerData.LastEnergyUpdateTime += timeUsedForRegen;
+                    if (playerData.EnergyCount >= MAX_ENERGY)
+                    {
+                        playerData.LastEnergyUpdateTime = currentTime;
+                    }
+                    else
+                    {
+                        long timeUsedForRegen = actualEnergyAdded * ENERGY_REGEN_MINUTES * 60;
+                        playerData.LastEnergyUpdateTime += timeUsedForRegen;
+                    }
                     
                     SavePlayerData();
 
-                    // Update UI if the StageManager is open
                     if (stageManager != null && stageManager.CurrentEnergyText != null)
                     {
                         stageManager.CurrentEnergyText.text = playerData.EnergyCount.ToString();
@@ -584,7 +774,7 @@ public class PlayerDataManager : MonoBehaviour
         int secondsPerEnergy = ENERGY_REGEN_MINUTES * 60;
         
         int remainingSeconds = secondsPerEnergy - (secondsPassed % secondsPerEnergy);
-        return remainingSeconds < 0 ? 0 : remainingSeconds; // Safety catch
+        return remainingSeconds < 0 ? 0 : remainingSeconds;
     }
 
     public string GetFormattedTimeUntilNextEnergy()
@@ -603,6 +793,7 @@ public class PlayerDataManager : MonoBehaviour
     private void OnDestroy()
     {
         if (energyRegenCoroutine != null) StopCoroutine(energyRegenCoroutine);
+        if (internetCheckCoroutine != null) StopCoroutine(internetCheckCoroutine);
     }
 
     public void SkipEnergyGenerateTime()
@@ -619,6 +810,36 @@ public class PlayerDataManager : MonoBehaviour
     public int GetPlayerColorBombAbilityCount() { return playerData.PlayerColorBombAbilityCount; }
     public int GetPlayerExtraMoveAbilityCount() { return playerData.PlayerExtraMoveAbilityCount; }
     public int GetPlayerShuffleAbilityCount() { return playerData.PlayerShuffleAbilityCount; }
+
+    private List<LevelInfo> MergeLevels(List<LevelInfo> primary, List<LevelInfo> secondary)
+    {
+        Dictionary<int, LevelInfo> map = new Dictionary<int, LevelInfo>();
+        if (primary != null)
+        {
+            foreach (var lvl in primary)
+            {
+                if (lvl != null) map[lvl.LevelID] = new LevelInfo { LevelID = lvl.LevelID, Stars = lvl.Stars, XP = lvl.XP, LevelLocked = lvl.LevelLocked };
+            }
+        }
+        if (secondary != null)
+        {
+            foreach (var lvl in secondary)
+            {
+                if (lvl == null) continue;
+                if (map.TryGetValue(lvl.LevelID, out var existing))
+                {
+                    existing.Stars = Mathf.Max(existing.Stars, lvl.Stars);
+                    existing.XP = Mathf.Max(existing.XP, lvl.XP);
+                    if (lvl.LevelLocked == 0) existing.LevelLocked = 0;
+                }
+                else
+                {
+                    map[lvl.LevelID] = new LevelInfo { LevelID = lvl.LevelID, Stars = lvl.Stars, XP = lvl.XP, LevelLocked = lvl.LevelLocked };
+                }
+            }
+        }
+        return map.Values.OrderBy(l => l.LevelID).ToList();
+    }
 
     public void ReconnectAndSyncPlayFab(System.Action onSuccess = null, System.Action onFailure = null)
     {

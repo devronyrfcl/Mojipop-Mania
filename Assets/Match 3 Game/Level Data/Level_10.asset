@@ -19,7 +19,7 @@ MonoBehaviour:
   movesCount: 40
   target1Piece: 5
   target2Piece: 0
-  target1Count: 25
+  target1Count: 50
   target2Count: 25
   timeLimit: 90
   isTimedLevel: 1

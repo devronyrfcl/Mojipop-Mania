@@ -26,6 +26,11 @@ public class Leaderboard : MonoBehaviour
 
     public void GetAndShowLeaderboard()
     {
+        if (!PlayFabClientAPI.IsClientLoggedIn())
+        {
+            Debug.LogWarning("Cannot fetch leaderboard: PlayFab is not logged in yet.");
+            return;
+        }
         var request = new GetLeaderboardRequest
         {
             StatisticName = "XP", // Replace with your statistic name

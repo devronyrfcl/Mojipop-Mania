@@ -19,8 +19,8 @@ MonoBehaviour:
   movesCount: 28
   target1Piece: 4
   target2Piece: 7
-  target1Count: 15
-  target2Count: 15
+  target1Count: 38
+  target2Count: 38
   timeLimit: 600
   isTimedLevel: 0
   isMovesLevel: 1
@@ -29,3 +29,4 @@ MonoBehaviour:
     y: 1
   - x: 4
     y: 5
+  colorCount: 4
