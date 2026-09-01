@@ -99,6 +99,11 @@ public class PlayerDataManager : MonoBehaviour
                 string rawData = File.ReadAllText(savePath);
                 string decryptedJson = DecryptSaveData(rawData);
                 playerData = JsonUtility.FromJson<PlayerData>(decryptedJson);
+                if (playerData != null && !string.IsNullOrEmpty(playerData.Name) && playerData.Name != "Temp")
+                {
+                    isLaunched = true;
+                    isFoundName = true;
+                }
                 GetCurrentLevel();
                 stageManager?.RefreshLocalUI();
                 Debug.Log("Loaded local data cache successfully.");
@@ -113,6 +118,11 @@ public class PlayerDataManager : MonoBehaviour
         {
             CreateNewPlayer("Temp", Guid.NewGuid().ToString());
             GetCurrentLevel();
+        }
+        else if (!string.IsNullOrEmpty(playerData.Name) && playerData.Name != "Temp")
+        {
+            isLaunched = true;
+            isFoundName = true;
         }
     }
 
@@ -426,6 +436,7 @@ public class PlayerDataManager : MonoBehaviour
         playerData.Name = newName;
         PlayFabPlayerName = newName;
         isFoundName = true;
+        isLaunched = true;
         stageManager?.RefreshLocalUI();
         if (isOnline) SetUserName(newName);
     }
@@ -542,21 +553,30 @@ public class PlayerDataManager : MonoBehaviour
 
     public void CheckAndSetPlayerName()
     {
+        bool hasLocalName = playerData != null && !string.IsNullOrEmpty(playerData.Name) && playerData.Name != "Temp";
+
         if (!isOnline)
         {
-            isFoundName = false;
+            isFoundName = hasLocalName;
             return;
         }
 
-        if (string.IsNullOrEmpty(PlayFabPlayerName)) isFoundName = false;
-        else
+        if (!string.IsNullOrEmpty(PlayFabPlayerName))
         {
             isFoundName = true;
-            if (!string.IsNullOrEmpty(playerData.Name) && playerData.Name != PlayFabPlayerName)
+            if (playerData != null && playerData.Name != PlayFabPlayerName)
             {
                 playerData.Name = PlayFabPlayerName;
                 SavePlayerData();
                 stageManager?.RefreshLocalUI();
+            }
+        }
+        else
+        {
+            isFoundName = hasLocalName;
+            if (hasLocalName && PlayFabClientAPI.IsClientLoggedIn())
+            {
+                SetUserName(playerData.Name);
             }
         }
     }

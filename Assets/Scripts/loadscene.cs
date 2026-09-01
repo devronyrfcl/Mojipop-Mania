@@ -26,21 +26,17 @@ public class loadscene : MonoBehaviour
 
     void Start()
     {
-        LoadingBar.fillAmount = 0f;
-        namePanel.SetActive(false);
-        newButton.SetActive(false);
+        if (LoadingBar != null) LoadingBar.fillAmount = 0f;
+        if (namePanel != null) namePanel.SetActive(false);
+        if (newButton != null) newButton.SetActive(false);
         
-
         StartCoroutine(FillBar());
-        CheckForFirstLaunched();
-
-        //UserID.text = "User ID: " + PlayFabManager.Instance.playerID;
-
     }
 
     public void SetUserName()
     {
-        
+        if (userNameInput == null) return;
+
         string userName = userNameInput.text.Trim();
         if (string.IsNullOrEmpty(userName))
         {
@@ -48,92 +44,101 @@ public class loadscene : MonoBehaviour
             return;
         }
         
-        PlayerDataManager.Instance.SetName(userName);
-        PlayerDataManager.Instance.SavePlayerData();
-
+        if (PlayerDataManager.Instance != null)
+        {
+            PlayerDataManager.Instance.SetName(userName);
+            PlayerDataManager.Instance.SavePlayerData();
+        }
     }
-
-
 
     IEnumerator FillBar()
     {
-        while (LoadingBar.fillAmount < 1f)
+        while (LoadingBar != null && LoadingBar.fillAmount < 1f)
         {
             LoadingBar.fillAmount += fillSpeed * Time.deltaTime;
             yield return null;
         }
         
-        //Debug.Log("? Loading bar filled completely!");
-        namePanel.SetActive(true);
-
-        //proceed to next step
         yield return null;
-        LoadingFrame.gameObject.SetActive(false);
-        newButton.SetActive(true);
+        if (LoadingFrame != null) LoadingFrame.gameObject.SetActive(false);
 
+        bool hasSavedName = PlayerDataManager.Instance != null && 
+                            PlayerDataManager.Instance.playerData != null && 
+                            !string.IsNullOrEmpty(PlayerDataManager.Instance.playerData.Name) &&
+                            PlayerDataManager.Instance.playerData.Name != "Temp";
+
+        if (hasSavedName)
+        {
+            // Existing player: skip name input panel and transition straight to menu
+            if (namePanel != null) namePanel.SetActive(false);
+            if (newButton != null) newButton.SetActive(false);
+            StartCoroutine(SecondLoading());
+        }
+        else
+        {
+            // First launch without a name: prompt player to enter their name
+            if (namePanel != null) namePanel.SetActive(true);
+            if (newButton != null) newButton.SetActive(true);
+        }
         
-        stageManager.RefreashData();
-
-
+        if (stageManager != null)
+        {
+            stageManager.RefreashData();
+        }
     }
 
     public void OnNextClicked()
     {
+        if (userNameInput != null)
+        {
+            string userName = userNameInput.text.Trim();
+            if (string.IsNullOrEmpty(userName))
+            {
+                Debug.LogWarning("Username cannot be empty.");
+                return;
+            }
+        }
 
-        namePanel.SetActive(false);
         SetUserName();
 
-        SceneManager.LoadScene("MainMenu");
+        if (namePanel != null) namePanel.SetActive(false);
+        if (newButton != null) newButton.SetActive(false);
 
+        // Smooth transition to menu
+        StartCoroutine(SecondLoading());
     }
-
 
     public void OnNewButtonClicked()
     {
-        newButton.SetActive(false);
+        if (newButton != null) newButton.SetActive(false);
         StartCoroutine(SecondLoading());
     }
+
     IEnumerator SecondLoading()
     {
-        RectTransform emojiRect = EmojisImage.GetComponent<RectTransform>();
-        if (emojiRect != null)
+        if (EmojisImage != null)
         {
-            emojiRect.anchoredPosition = new Vector2(0f, 3000f);
-            yield return emojiRect.DOAnchorPosY(0f, 0.6f).SetEase(Ease.InOutQuad).WaitForCompletion();
+            RectTransform emojiRect = EmojisImage.GetComponent<RectTransform>();
+            if (emojiRect != null)
+            {
+                emojiRect.anchoredPosition = new Vector2(0f, 3000f);
+                yield return emojiRect.DOAnchorPosY(0f, 0.6f).SetEase(Ease.InOutQuad).WaitForCompletion();
+            }
         }
         yield return new WaitForSeconds(0.3f);
-        LoadingObject.SetActive(false);
-        if (emojiRect != null)
+        if (LoadingObject != null) LoadingObject.SetActive(false);
+        if (EmojisImage != null)
         {
-            yield return emojiRect.DOAnchorPosY(-3000f, 0.6f).SetEase(Ease.InOutQuad).WaitForCompletion();
+            RectTransform emojiRect = EmojisImage.GetComponent<RectTransform>();
+            if (emojiRect != null)
+            {
+                yield return emojiRect.DOAnchorPosY(-3000f, 0.6f).SetEase(Ease.InOutQuad).WaitForCompletion();
+            }
         }
-        stageManager.ShowTotalXPandTotalStars();
-        stageManager.RefreashData();
-    }
-
-
-    void CheckForFirstLaunched()
-    {
-        RectTransform emojiRect = EmojisImage.GetComponent<RectTransform>();
-
-        if (PlayerDataManager.Instance.isLaunched)
+        if (stageManager != null)
         {
-            LoadingObject.SetActive(false);
-            StartCoroutine(EmojiLoading());
-        }
-        else
-        {
-            Debug.Log("StageManager: First launch detected, showing emojis.");
-        }
-    }
-
-    IEnumerator EmojiLoading()
-    {
-        RectTransform emojiRect = EmojisImage.GetComponent<RectTransform>();
-        if (emojiRect != null)
-        {
-            emojiRect.anchoredPosition = new Vector2(0f, 0f);
-            yield return emojiRect.DOAnchorPosY(-3000f, 0.6f).SetEase(Ease.InOutQuad).WaitForCompletion();
+            stageManager.ShowTotalXPandTotalStars();
+            stageManager.RefreashData();
         }
     }
 

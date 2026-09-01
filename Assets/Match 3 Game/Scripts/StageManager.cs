@@ -328,10 +328,15 @@ private void ApplyDataToButtons()
 
     public void CheckAndShowNamePanel()
     {
-        if (!PlayerDataManager.Instance.isFoundName)
-            namePanel.SetActive(true); 
-        else
-            namePanel.SetActive(false); 
+        if (namePanel == null) return;
+
+        bool hasName = (PlayerDataManager.Instance != null && 
+                        PlayerDataManager.Instance.playerData != null && 
+                        !string.IsNullOrEmpty(PlayerDataManager.Instance.playerData.Name) && 
+                        PlayerDataManager.Instance.playerData.Name != "Temp") ||
+                       (PlayerDataManager.Instance != null && PlayerDataManager.Instance.isFoundName);
+
+        namePanel.SetActive(!hasName);
     }
 
     public void RefreashData()
