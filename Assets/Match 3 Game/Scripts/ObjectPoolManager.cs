@@ -21,6 +21,9 @@ public class ObjectPoolManager : MonoBehaviour
 
     private readonly Dictionary<int, Queue<GameObject>> poolDictionary = new Dictionary<int, Queue<GameObject>>();
     private readonly Dictionary<int, int> instanceToPrefabMap = new Dictionary<int, int>();
+    // Instances currently sitting in a queue. Guards against double-despawn, which would
+    // hand the same object out twice and leave a visually empty grid cell.
+    private readonly HashSet<int> pooledInstances = new HashSet<int>();
 
     public static GameObject Spawn(GameObject prefab, Vector3 position, Quaternion rotation)
     {
@@ -58,6 +61,7 @@ public class ObjectPoolManager : MonoBehaviour
             obj = queue.Dequeue();
             if (obj != null)
             {
+                pooledInstances.Remove(obj.GetInstanceID());
                 obj.transform.position = position;
                 obj.transform.rotation = rotation;
                 obj.transform.localScale = Vector3.one;
@@ -89,6 +93,7 @@ public class ObjectPoolManager : MonoBehaviour
 
         if (instanceToPrefabMap.TryGetValue(instanceKey, out int prefabKey))
         {
+            if (!pooledInstances.Add(instanceKey)) return; // already despawned
             instance.SetActive(false);
             if (!poolDictionary.ContainsKey(prefabKey))
             {

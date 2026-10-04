@@ -447,7 +447,8 @@ public class PlayerDataManager : MonoBehaviour
         isFoundName = true;
         SavePlayerData();
         stageManager?.RefreshLocalUI();
-        stageManager.UserNameUpdated();
+        // No popup here: this callback also fires for the automatic name sync on every login.
+        // The popup is shown by StageManager.SetUserName when the player actually changes it.
     }
 
     public void SetPlayerID(string newPlayerID) { playerData.PlayerID = newPlayerID; }
@@ -494,8 +495,9 @@ public class PlayerDataManager : MonoBehaviour
         isOnline = true;
 
         LoadPlayerData();
-        CheckAndSetPlayerName();
 
+        // Name check runs once the account's display name is known (below); checking before
+        // that pushed the local name to PlayFab on every launch.
         var getRequest = new GetAccountInfoRequest();
         PlayFabClientAPI.GetAccountInfo(getRequest, accResult =>
         {

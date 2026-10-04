@@ -44,6 +44,25 @@ public class GridManager : MonoBehaviour
     public bool isGameOver = false;
     private bool isGameOverTriggered = false;
 
+    [Header("Speed Settings")]
+    [Tooltip("Swap animation time when the player swipes two emojis")]
+    public float swapTime = 0.18f;
+    [Tooltip("Time for an invalid swap to slide back")]
+    public float swapBackTime = 0.15f;
+    [Tooltip("Pop/shrink time for matched emojis")]
+    public float matchPopTime = 0.2f;
+    [Tooltip("Pause after a match before pieces start falling")]
+    public float refillStartDelay = 0.12f;
+    public float fallBaseTime = 0.08f;
+    public float fallTimePerCell = 0.035f;
+    public float fallMaxTime = 0.35f;
+    public float fallStaggerDelay = 0.02f;
+    public float spawnScaleTime = 0.15f;
+    [Tooltip("Pause after pieces land before checking cascades")]
+    public float landSettleTime = 0.05f;
+
+    public static GridManager Instance { get; private set; }
+
     private bool isRefilling = false; // Track if grid is currently refilling
     private bool needsAnotherRefill = false;
     private bool hasPendingMatches = false; // Track if matches were found during refill
@@ -270,6 +289,7 @@ public class GridManager : MonoBehaviour
 
     private void Awake()
     {
+        Instance = this;
         if (targetImage != null)
             targetImage.transform.localScale = Vector3.zero; // Start hidden
     }
@@ -331,8 +351,9 @@ public class GridManager : MonoBehaviour
             return;
         }
 
+        // UpdateUI() isn't needed per frame: it doesn't show time (FixedUpdate does), and
+        // moves/targets/abilities refresh when they change. Avoids per-frame GC on mobile.
         currentTime -= Time.deltaTime;
-        UpdateUI();
 
         if (currentTime <= 0)
         {
@@ -939,111 +960,124 @@ public class GridManager : MonoBehaviour
         StartCoroutine(RefillGridCoroutine());
     }
 
+    // A cell is empty if nothing is registered there, or the registered piece was despawned.
+    private bool IsEmptyCell(int x, int y)
+    {
+        if (IsBlocked(x, y)) return false;
+        GameObject cell = grid[x, y];
+        if (cell == null) return true;
+        if (!cell.activeInHierarchy)
+        {
+            grid[x, y] = null; // stale reference to a pooled/destroyed piece
+            return true;
+        }
+        return false;
+    }
+
+    private bool HasEmptyCells()
+    {
+        for (int x = 0; x < levelData.gridWidth; x++)
+            for (int y = 0; y < levelData.gridHeight; y++)
+                if (IsEmptyCell(x, y)) return true;
+        return false;
+    }
+
+    private float GetFallTime(float distance)
+    {
+        return Mathf.Min(fallBaseTime + fallTimePerCell * distance, fallMaxTime);
+    }
+
+    /// <summary>
+    /// Gravity and spawning in a single pass: existing pieces drop into the gaps below them
+    /// while new pieces drop in from above the board at the same time.
+    /// Returns how long the longest fall animation takes.
+    /// </summary>
+    private float CollapseAndFillColumns()
+    {
+        float longestFall = 0f;
+        for (int x = 0; x < levelData.gridWidth; x++)
+        {
+            int fallIndex = 0;
+            int spawnIndex = 0;
+            for (int y = 0; y < levelData.gridHeight; y++)
+            {
+                if (!IsEmptyCell(x, y)) continue;
+
+                GameObject fallingPiece = null;
+                for (int upperY = y + 1; upperY < levelData.gridHeight; upperY++)
+                {
+                    if (IsBlocked(x, upperY) || IsEmptyCell(x, upperY)) continue;
+                    fallingPiece = grid[x, upperY];
+                    grid[x, upperY] = null;
+                    break;
+                }
+
+                float delay = fallIndex * fallStaggerDelay;
+                fallIndex++;
+
+                if (fallingPiece != null)
+                {
+                    Piece pieceScript = fallingPiece.GetComponent<Piece>();
+                    pieceScript.stickToGrid = false;
+                    pieceScript.X = x;
+                    pieceScript.Y = y;
+                    grid[x, y] = fallingPiece;
+
+                    float fallTime = GetFallTime(fallingPiece.transform.position.y - y);
+                    fallingPiece.transform.DOKill();
+                    fallingPiece.transform.localScale = Vector3.one;
+                    fallingPiece.transform.DOMove(new Vector2(x, y), fallTime)
+                        .SetEase(Ease.InQuad)
+                        .SetDelay(delay);
+                    longestFall = Mathf.Max(longestFall, delay + fallTime);
+                }
+                else
+                {
+                    // Nothing above: spawn a new piece stacked above the board
+                    float startY = levelData.gridHeight + spawnIndex;
+                    spawnIndex++;
+
+                    GameObject newPiece = ObjectPoolManager.Spawn(
+                        GetRandomPiecePrefab(),
+                        new Vector2(x, startY),
+                        Quaternion.identity
+                    );
+                    Piece pieceScript = newPiece.GetComponent<Piece>();
+                    pieceScript.stickToGrid = false;
+                    pieceScript.X = x;
+                    pieceScript.Y = y;
+                    newPiece.transform.SetParent(transform);
+                    newPiece.name = pieceScript.pieceType.ToString() + " (" + x + ", " + y + ")";
+                    newPiece.transform.localScale = Vector3.zero;
+                    grid[x, y] = newPiece;
+
+                    float fallTime = GetFallTime(startY - y);
+                    newPiece.transform.DOScale(Vector3.one, spawnScaleTime).SetEase(Ease.OutBack).SetDelay(delay);
+                    newPiece.transform.DOMove(new Vector2(x, y), fallTime)
+                        .SetEase(Ease.InQuad)
+                        .SetDelay(delay);
+                    longestFall = Mathf.Max(longestFall, delay + fallTime);
+                }
+            }
+        }
+        return longestFall;
+    }
+
     private IEnumerator RefillGridCoroutine()
     {
         isRefilling = true;
         canControl = false;
 
-        bool keepRefilling = true;
-        while (keepRefilling)
+        // Short pause so the match pop animation reads before pieces start dropping
+        yield return new WaitForSeconds(refillStartDelay);
+
+        do
         {
             needsAnotherRefill = false;
-
-            yield return new WaitForSeconds(0.2f);
-
-            // Phase 1: Gravity - existing upper pieces fall down into empty spaces below them
-            for (int x = 0; x < levelData.gridWidth; x++)
-            {
-                int fallDelayIndex = 0;
-                for (int y = 0; y < levelData.gridHeight; y++)
-                {
-                    if (grid[x, y] == null && !IsBlocked(x, y))
-                    {
-                        for (int upperY = y + 1; upperY < levelData.gridHeight; upperY++)
-                        {
-                            if (grid[x, upperY] != null && !IsBlocked(x, upperY))
-                            {
-                                GameObject fallingPiece = grid[x, upperY];
-                                Piece pieceScript = fallingPiece.GetComponent<Piece>();
-                                if (pieceScript != null)
-                                {
-                                    pieceScript.stickToGrid = false;
-                                    grid[x, y] = fallingPiece;
-                                    grid[x, upperY] = null;
-                                    pieceScript.X = x;
-                                    pieceScript.Y = y;
-
-                                    Vector2 targetPos = new Vector2(x, y);
-                                    float fallTime = 0.35f;
-                                    float delay = fallDelayIndex * 0.05f;
-
-                                    fallingPiece.transform.DOKill();
-                                    fallingPiece.transform.localScale = Vector3.one;
-                                    fallingPiece.transform.DOMove(targetPos, fallTime)
-                                        .SetEase(Ease.InQuad)
-                                        .SetDelay(delay);
-
-                                    fallDelayIndex++;
-                                }
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            yield return new WaitForSeconds(0.35f);
-
-            // Phase 2: Spawn new pieces into all empty cells
-            for (int x = 0; x < levelData.gridWidth; x++)
-            {
-                for (int y = 0; y < levelData.gridHeight; y++)
-                {
-                    if (grid[x, y] == null && !IsBlocked(x, y))
-                    {
-                        GameObject selectedPrefab = GetRandomPiecePrefab();
-                        GameObject newPiece = ObjectPoolManager.Spawn(
-                            selectedPrefab,
-                            new Vector2(x, levelData.gridHeight + 1f),
-                            Quaternion.identity
-                        );
-                        Piece pieceScript = newPiece.GetComponent<Piece>();
-                        if (pieceScript != null)
-                        {
-                            pieceScript.stickToGrid = false;
-                            pieceScript.X = x;
-                            pieceScript.Y = y;
-                            newPiece.transform.SetParent(transform);
-                            newPiece.name = pieceScript.pieceType.ToString() + " (" + x + ", " + y + ")";
-                            newPiece.transform.localScale = Vector3.zero;
-                            grid[x, y] = newPiece;
-
-                            newPiece.transform.DOScale(Vector3.one, 0.2f).SetEase(Ease.OutBack);
-                            newPiece.transform.DOMove(new Vector2(x, y), 0.35f).SetEase(Ease.OutBounce);
-                        }
-                    }
-                }
-            }
-
-            yield return new WaitForSeconds(0.4f);
-
-            // Verify if any empty cells still exist on the board
-            bool hasEmptyCells = false;
-            for (int x = 0; x < levelData.gridWidth; x++)
-            {
-                for (int y = 0; y < levelData.gridHeight; y++)
-                {
-                    if (grid[x, y] == null && !IsBlocked(x, y))
-                    {
-                        hasEmptyCells = true;
-                        break;
-                    }
-                }
-                if (hasEmptyCells) break;
-            }
-
-            keepRefilling = hasEmptyCells || needsAnotherRefill;
+            float longestFall = CollapseAndFillColumns();
+            yield return new WaitForSeconds(longestFall + landSettleTime);
         }
+        while (needsAnotherRefill || HasEmptyCells());
 
         // Re-enable stickToGrid and reset match states
         for (int x = 0; x < levelData.gridWidth; x++)
@@ -1062,8 +1096,6 @@ public class GridManager : MonoBehaviour
             }
         }
 
-        yield return new WaitForSeconds(0.1f);
-
         // Check for cascade matches
         hasPendingMatches = false;
         for (int x = 0; x < levelData.gridWidth; x++)
@@ -1081,11 +1113,8 @@ public class GridManager : MonoBehaviour
             }
         }
 
-        yield return new WaitForSeconds(0.2f);
-
         if (hasPendingMatches)
         {
-            Debug.Log("Cascade match found! Executing...");
             for (int x = 0; x < levelData.gridWidth; x++)
             {
                 for (int y = 0; y < levelData.gridHeight; y++)
@@ -1101,20 +1130,31 @@ public class GridManager : MonoBehaviour
                 }
             }
 
-            yield return new WaitForSeconds(0.4f);
+            isRefilling = false;
+            UpdateGrid();
+        }
+        else if (needsAnotherRefill || HasEmptyCells())
+        {
+            // Something cleared cells while we were finishing up (e.g. a delayed clown/special
+            // effect). Previously this request was dropped and left permanent holes.
             isRefilling = false;
             UpdateGrid();
         }
         else
         {
             isRefilling = false;
-            canControl = true;
+            canControl = !isGameOver;
             if (!HasPossibleMove())
             {
                 ShuffleBoard();
             }
-            Debug.Log("Grid settled - control enabled");
         }
+    }
+
+    /// <summary>Re-enable input unless the board is still refilling or the game ended.</summary>
+    public void ReleaseControl()
+    {
+        if (!isRefilling && !isGameOver) canControl = true;
     }
     public void SetHasPendingMatches(bool value)
     {

@@ -72,7 +72,7 @@ public class Piece : MonoBehaviour
 
     void Start()
     {
-        if (gridManager == null) gridManager = FindObjectOfType<GridManager>(); 
+        if (gridManager == null) gridManager = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>(); 
         if (gridManager != null && levelData == null) levelData = gridManager.levelData;
         stickToGrid = true; 
     }
@@ -88,7 +88,7 @@ public class Piece : MonoBehaviour
         Collider2D col = GetComponent<Collider2D>();
         if (col != null) col.enabled = true;
 
-        if (gridManager == null) gridManager = FindObjectOfType<GridManager>();
+        if (gridManager == null) gridManager = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
         if (gridManager != null && levelData == null) levelData = gridManager.levelData;
         StartCoroutine(AnimatePiece());
     }
@@ -105,7 +105,7 @@ public class Piece : MonoBehaviour
 
     void UpdateTargetPosition()
     {
-        if (gridManager == null) gridManager = FindObjectOfType<GridManager>();
+        if (gridManager == null) gridManager = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
         if (gridManager == null || PlayerDataManager.Instance == null) return;
         if (levelData == null && gridManager != null) levelData = gridManager.levelData;
 
@@ -188,7 +188,7 @@ public class Piece : MonoBehaviour
 
         Vector2 myTarget = targetPiece.transform.position;
         Vector2 otherTarget = transform.position;
-        float swipeTime = 0.3f;
+        float swipeTime = gridManager.swapTime;
 
         originalWorldPosition = transform.position;
         originalX = X;
@@ -265,7 +265,7 @@ public class Piece : MonoBehaviour
         // NO MATCH -> GUARANTEED SWAP BACK TO ORIGINAL POSITIONS
         AudioManager.Instance?.PlaySFX("Swing_1");
 
-        const float returnTime = 0.25f;
+        float returnTime = gridManager.swapBackTime;
         transform.DOMove(originalWorldPosition, returnTime).SetEase(Ease.OutQuad);
         if (targetPiece != null)
             targetPiece.transform.DOMove(targetPiece.originalWorldPosition, returnTime).SetEase(Ease.OutQuad);
@@ -294,7 +294,7 @@ public class Piece : MonoBehaviour
 
         if (gridManager != null)
         {
-            gridManager.canControl = true;
+            gridManager.ReleaseControl();
         }
     }
 
@@ -510,8 +510,7 @@ public class Piece : MonoBehaviour
     {
         if (piece == null) return;
         piece.isMatched = true;
-        if (gridManager != null && gridManager.grid != null)
-            gridManager.grid[piece.X, piece.Y] = null;
+        ClearGridSlot(piece);
         TriggerPieceMatchedEvent(piece.pieceType);
         Collider2D col = piece.GetComponent<Collider2D>();
         if (col != null) col.enabled = false;
@@ -967,7 +966,7 @@ public class Piece : MonoBehaviour
         }
         
 
-        gridManager.grid[piece.X, piece.Y] = null;
+        ClearGridSlot(piece);
         TriggerPieceMatchedEvent(piece.pieceType);
 
         // Detonate special pieces when matched
@@ -997,7 +996,8 @@ public class Piece : MonoBehaviour
                 GameObject mp = ObjectPoolManager.Spawn(piece.matchedParticle, piece.transform.position, Quaternion.identity); ObjectPoolManager.Despawn(mp, 1.5f);
             }
         }
-        piece.transform.DOScale(Vector2.zero, 0.3f).SetEase(Ease.InBack).OnComplete(() =>
+        piece.transform.DOKill();
+        piece.transform.DOScale(Vector2.zero, gridManager.matchPopTime).SetEase(Ease.InBack).OnComplete(() =>
         {
             gridManager.SpawnParticleEffect(piece.X, piece.Y);
             gridManager.GameOverLogic();
@@ -1022,14 +1022,14 @@ public class Piece : MonoBehaviour
 
         if (otherPiece == null)
         {
-            if (gridManager != null) gridManager.canControl = true;
+            if (gridManager != null) gridManager.ReleaseControl();
             yield break;
         }
 
         Piece other = otherPiece.GetComponent<Piece>();
         if (other == null || other.isMatched)
         {
-            if (gridManager != null) gridManager.canControl = true;
+            if (gridManager != null) gridManager.ReleaseControl();
             yield break;
         }
 
@@ -1044,7 +1044,7 @@ public class Piece : MonoBehaviour
 
         AudioManager.Instance?.PlaySFX("Swing_1");
 
-        const float swipeTime = 0.25f;
+        float swipeTime = gridManager.swapBackTime;
 
         transform.DOMove(originalWorldPosition, swipeTime).SetEase(Ease.OutQuad);
         other.transform.DOMove(other.originalWorldPosition, swipeTime).SetEase(Ease.OutQuad);
@@ -1069,7 +1069,7 @@ public class Piece : MonoBehaviour
 
         if (gridManager != null)
         {
-            gridManager.canControl = true;
+            gridManager.ReleaseControl();
         }
     }
     void ClearColoumn(int coloumnIndex)
@@ -1108,7 +1108,7 @@ public class Piece : MonoBehaviour
     {
         if (piece == null) return;
 
-        gridManager.grid[piece.X, piece.Y] = null;
+        ClearGridSlot(piece);
         TriggerPieceMatchedEvent(piece.pieceType);
 
         // Chain Reaction: Special power-ups trigger their abilities when caught in blasts/lasers
@@ -1139,12 +1139,22 @@ public class Piece : MonoBehaviour
             }
         }
         piece.transform.DOKill();
-        piece.transform.DOScale(Vector2.zero, 0.25f).SetEase(Ease.InBack).OnComplete(() =>
+        piece.transform.DOScale(Vector2.zero, gridManager.matchPopTime).SetEase(Ease.InBack).OnComplete(() =>
         {
             gridManager.SpawnParticleEffect(piece.X, piece.Y);
             gridManager.GameOverLogic();
             ObjectPoolManager.Despawn(piece.gameObject);
         });
+    }
+
+    // Only clear the cell if it still holds this piece; another piece may already have
+    // fallen into it, and nulling that would leave a visible piece the grid doesn't know about.
+    private void ClearGridSlot(Piece piece)
+    {
+        if (gridManager == null || gridManager.grid == null || levelData == null) return;
+        if (piece.X < 0 || piece.Y < 0 || piece.X >= levelData.gridWidth || piece.Y >= levelData.gridHeight) return;
+        if (gridManager.grid[piece.X, piece.Y] == piece.gameObject)
+            gridManager.grid[piece.X, piece.Y] = null;
     }
     void ClearAllPieces()
     {
@@ -1166,7 +1176,8 @@ public class Piece : MonoBehaviour
 
     public void ClearColour(PieceType type)
     {
-        StartCoroutine(ClearColourRoutine(this, type));
+        // Run on GridManager: this piece is usually being despawned, which would stop the routine halfway.
+        gridManager.StartCoroutine(ClearColourRoutine(this, type));
     }
 
     private IEnumerator ClearColourRoutine(Piece colorPiece, PieceType type)
@@ -1235,7 +1246,7 @@ public class Piece : MonoBehaviour
             colorPiece.isMatched = true;
             if (gridManager.grid != null && colorPiece.X >= 0 && colorPiece.Y >= 0 && colorPiece.X < levelData.gridWidth && colorPiece.Y < levelData.gridHeight)
             {
-                gridManager.grid[colorPiece.X, colorPiece.Y] = null;
+                ClearGridSlot(colorPiece);
             }
 
             colorPiece.transform.DOScale(Vector3.one * 1.5f, 0.12f).SetEase(Ease.OutBack).OnComplete(() =>
@@ -1252,7 +1263,7 @@ public class Piece : MonoBehaviour
                         ObjectPoolManager.Despawn(colorPiece.gameObject);
                         gridManager.UpdateGrid();
                         gridManager.GameOverLogic();
-                        gridManager.canControl = true;
+                        gridManager.ReleaseControl();
                     });
                 }
             });
@@ -1261,7 +1272,7 @@ public class Piece : MonoBehaviour
         {
             gridManager.UpdateGrid();
             gridManager.GameOverLogic();
-            gridManager.canControl = true;
+            gridManager.ReleaseControl();
         }
     }
 
@@ -1310,7 +1321,7 @@ public class Piece : MonoBehaviour
     private void MarkAndDestroyColorPiece(Piece colorPiece)
     {
         colorPiece.isMatched = true;   
-        gridManager.grid[colorPiece.X, colorPiece.Y] = null; 
+        ClearGridSlot(colorPiece);
 
         colorPiece.transform.DOScale(Vector3.zero, 0.3f).SetEase(Ease.InBack)
             .OnComplete(() => 
