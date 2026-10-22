@@ -1,10 +1,13 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 public class DynamicMapScroller : MonoBehaviour
 {
     [Header("UI References")]
     [Tooltip("Drag your Content object here")]
     public RectTransform contentBox;
+    [Tooltip("The map ScrollRect. If empty, it is found on this GameObject.")]
+    public ScrollRect mapScrollRect;
 
     [Header("Scroll Settings")]
     [Tooltip("The minimum height of the map (just enough to show Level 1 and the bottom UI)")]
@@ -19,6 +22,7 @@ public class DynamicMapScroller : MonoBehaviour
 
     private void Awake()
     {
+        if (mapScrollRect == null) mapScrollRect = GetComponent<ScrollRect>();
         UpdateMapHeight();
     }
 
@@ -67,5 +71,23 @@ public class DynamicMapScroller : MonoBehaviour
 
         // Apply the new height to the Content box, keeping its current width
         contentBox.sizeDelta = new Vector2(contentBox.sizeDelta.x, totalHeight);
+    }
+
+    /// <summary>Opens the map at the level the player last chose, not at Level 1.</summary>
+    public void FocusLastOpenedLevel(int levelIndex, int totalLevelCount)
+    {
+        if (mapScrollRect == null || totalLevelCount <= 1) return;
+        StartCoroutine(FocusAfterLayout(levelIndex, totalLevelCount));
+    }
+
+    private System.Collections.IEnumerator FocusAfterLayout(int levelIndex, int totalLevelCount)
+    {
+        // Content height is assigned during menu setup; wait one frame so ScrollRect
+        // has valid bounds before applying the normalized position.
+        yield return null;
+        Canvas.ForceUpdateCanvases();
+        float normalized = Mathf.Clamp01(levelIndex / (float)(totalLevelCount - 1));
+        mapScrollRect.verticalNormalizedPosition = normalized;
+        mapScrollRect.velocity = Vector2.zero;
     }
 }

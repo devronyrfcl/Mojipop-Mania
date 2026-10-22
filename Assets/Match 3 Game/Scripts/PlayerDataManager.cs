@@ -508,7 +508,9 @@ public class PlayerDataManager : MonoBehaviour
 
     void OnError(PlayFabError error)
     {
-        isOnline = false;
+        Debug.LogWarning("PlayFab request error: " + error.GenerateErrorReport());
+        // Verify actual network reachability rather than unconditionally marking offline
+        isOnline = Application.internetReachability != NetworkReachability.NotReachable;
         // Fallback to loading offline local data if login fails on startup
         if (playerData == null)
         {

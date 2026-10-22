@@ -46,20 +46,20 @@ public class GridManager : MonoBehaviour
 
     [Header("Speed Settings")]
     [Tooltip("Swap animation time when the player swipes two emojis")]
-    public float swapTime = 0.18f;
+    public float swapTime = 0.2f;
     [Tooltip("Time for an invalid swap to slide back")]
-    public float swapBackTime = 0.15f;
+    public float swapBackTime = 0.2f;
     [Tooltip("Pop/shrink time for matched emojis")]
-    public float matchPopTime = 0.2f;
+    public float matchPopTime = 0.25f;
     [Tooltip("Pause after a match before pieces start falling")]
-    public float refillStartDelay = 0.12f;
-    public float fallBaseTime = 0.08f;
-    public float fallTimePerCell = 0.035f;
+    public float refillStartDelay = 0.15f;
+    public float fallBaseTime = 0.18f;
+    public float fallTimePerCell = 0.07f;
     public float fallMaxTime = 0.35f;
-    public float fallStaggerDelay = 0.02f;
+    public float fallStaggerDelay = 0.025f;
     public float spawnScaleTime = 0.15f;
     [Tooltip("Pause after pieces land before checking cascades")]
-    public float landSettleTime = 0.05f;
+    public float landSettleTime = 0.15f;
 
     public static GridManager Instance { get; private set; }
 
@@ -258,7 +258,13 @@ public class GridManager : MonoBehaviour
 
         LoadPlayerAbilities();
 
-        if (levelData.isMovesLevel)
+        if (levelData.isMovesLevel && levelData.isTimedLevel)
+        {
+            // Hybrid level: both limits are active (Level 14).
+            moveTargetUI.SetActive(true);
+            timeTargetUI.SetActive(true);
+        }
+        else if (levelData.isMovesLevel)
         {
             moveTargetUI.SetActive(true);
             timeTargetUI.SetActive(false);

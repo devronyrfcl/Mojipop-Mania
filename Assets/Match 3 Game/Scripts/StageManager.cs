@@ -88,10 +88,14 @@ public class StageManager : MonoBehaviour
 
     void CheckForInternetConnection()
     {
-        if (PlayerDataManager.Instance.isOnline == false)
-            ActiveNoInternetPanel();
-        else
-            NoInternetConnectionPanel.SetActive(false);
+        if (PlayerDataManager.Instance != null)
+        {
+            PlayerDataManager.Instance.CheckInternetConnection();
+            if (!PlayerDataManager.Instance.isOnline)
+                ActiveNoInternetPanel();
+            else
+                NoInternetConnectionPanel.SetActive(false);
+        }
     }
 
     public void CheckForInternetConnectionForUIButton()
@@ -163,7 +167,13 @@ private void ApplyDataToButtons()
             }
         }
 
-        FindObjectOfType<DynamicMapScroller>()?.UpdateMapHeight();
+        DynamicMapScroller mapScroller = FindObjectOfType<DynamicMapScroller>();
+        if (mapScroller != null)
+        {
+            mapScroller.UpdateMapHeight();
+            int lastOpenedIndex = Mathf.Clamp(PlayerPrefs.GetInt(SelectedLevelIndexKey, currentLevel - 1), 0, levelButtons.Length - 1);
+            mapScroller.FocusLastOpenedLevel(lastOpenedIndex, levelButtons.Length);
+        }
         SendDataToLeaderBoard();
     }
 
@@ -179,7 +189,7 @@ private void ApplyDataToButtons()
         CheckForInternetConnection(); 
         yield return new WaitForSeconds(0.2f);
 
-        if (PlayerDataManager.Instance.isOnline == false)
+        if (PlayerDataManager.Instance != null && !PlayerDataManager.Instance.isOnline)
             ActiveNoInternetPanel();
         else
         {
@@ -487,8 +497,11 @@ private void ApplyDataToButtons()
     public void RetryConnection()
     {
         NoInternetConnectionPanel.SetActive(false);
-        PlayerDataManager.Instance.CheckInternetConnection();
-        PlayerDataManager.Instance.LoginAsGuest();
+        if (PlayerDataManager.Instance != null)
+        {
+            PlayerDataManager.Instance.CheckInternetConnection();
+            PlayerDataManager.Instance.LoginAsGuest();
+        }
         CheckForInternetConnection(); 
     }
 }

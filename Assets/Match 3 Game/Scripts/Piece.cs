@@ -1210,14 +1210,26 @@ public class Piece : MonoBehaviour
             }
         }
 
+        // Reserve every affected cell before the visual wave begins. Previously the
+        // staggered animation left dying pieces registered in the grid, allowing
+        // gravity to run between clears and creating the Level 6/12 holes.
+        foreach (Piece p in targetPieces)
+        {
+            if (p == null) continue;
+            p.isMatched = true;
+            p.preventSwipeBack = true;
+            Collider2D collider = p.GetComponent<Collider2D>();
+            if (collider != null) collider.enabled = false;
+            ClearGridSlot(p);
+        }
+
         // 3. Staggered cascade pop wave across target emojis
         float staggerDelay = 0.045f;
         for (int i = 0; i < targetPieces.Count; i++)
         {
             Piece p = targetPieces[i];
-            if (p != null && !p.isMatched)
+            if (p != null)
             {
-                p.isMatched = true;
                 p.transform.DOKill();
                 p.transform.DOScale(Vector3.one * 1.25f, 0.1f).SetEase(Ease.OutQuad).OnComplete(() =>
                 {

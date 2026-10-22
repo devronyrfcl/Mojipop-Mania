@@ -16,12 +16,12 @@ MonoBehaviour:
   gridHeight: 8
   GridSeed: 8
   SpecialPiecesAmount: 2
-  movesCount: 25
+  movesCount: 10
   target1Piece: 2
   target2Piece: 7
-  target1Count: 22
-  target2Count: 22
-  timeLimit: 120
+  target1Count: 30
+  target2Count: 30
+  timeLimit: 0
   isTimedLevel: 0
   isMovesLevel: 1
   blockedCells:

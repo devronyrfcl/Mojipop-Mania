@@ -74428,16 +74428,16 @@ MonoBehaviour:
   isPlacingColor: 0
   canControl: 1
   isGameOver: 0
-  swapTime: 0.18
-  swapBackTime: 0.15
-  matchPopTime: 0.2
-  refillStartDelay: 0.12
-  fallBaseTime: 0.08
-  fallTimePerCell: 0.035
+  swapTime: 0.2
+  swapBackTime: 0.2
+  matchPopTime: 0.25
+  refillStartDelay: 0.15
+  fallBaseTime: 0.18
+  fallTimePerCell: 0.07
   fallMaxTime: 0.35
-  fallStaggerDelay: 0.02
+  fallStaggerDelay: 0.025
   spawnScaleTime: 0.15
-  landSettleTime: 0.05
+  landSettleTime: 0.15
   lastSwapX: -1
   lastSwapY: -1
   lastSwapX1: -1
